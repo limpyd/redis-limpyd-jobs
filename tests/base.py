@@ -4,6 +4,8 @@ import sys
 from limpyd import DEFAULT_CONNECTION_SETTINGS, TEST_CONNECTION_SETTINGS
 from limpyd.contrib.database import PipelineDatabase
 
+from limpyd_jobs.models import BaseJobsModel
+
 test_database = PipelineDatabase(**TEST_CONNECTION_SETTINGS)
 
 
@@ -21,6 +23,9 @@ class LimpydBaseTest(unittest.TestCase):
         assert current_db_id != DEFAULT_CONNECTION_SETTINGS['db']
         assert current_db_id == TEST_CONNECTION_SETTINGS['db']
         self.connection.flushdb()
+
+        # make jobs models use the test database
+        BaseJobsModel.use_database(self.database)
 
     def tearDown(self):
         self.connection.flushdb()
