@@ -16,6 +16,14 @@ class BaseJobsModel(related.RelatedModel):
     abstract = True
     cacheable = False
 
+    def set_fields(self, **fields):
+        """
+        Set many fields using the proxy setter for each of them.
+        """
+        for field_name, value in fields.iteritems():
+            field = getattr(self, field_name)
+            field.proxy_set(value)
+
 
 class Queue(BaseJobsModel):
     name = fields.HashableField(indexable=True)
@@ -25,14 +33,19 @@ class Queue(BaseJobsModel):
     errors = fields.ListField()
 
     @classmethod
-    def get_queue(cls, name, priority=0):
+    def get_queue(cls, name, priority=0, **fields_if_new):
         """
         Get, or create, and return the wanted queue.
+        If the queue is created, fields in fields_if_new will be set for the new
+        queue.
         """
         queue, created = cls.get_or_connect(
             name=name,
             priority=priority,
         )
+        if created and fields_if_new:
+            queue.set_fields(**fields_if_new)
+
         return queue
 
     @classmethod
@@ -52,11 +65,13 @@ class Job(BaseJobsModel):
     end = fields.HashableField()
 
     @classmethod
-    def add_job(cls, identifier, queue_name, priority=0):
+    def add_job(cls, identifier, queue_name, priority=0, **fields_if_new):
         """
         Add a job to a queue.
         If this job already exists, check it's current priority. If its higher
         than the new one, don't touch it, else move the job to the wanted queue.
+        If the job is created, fields in fields_if_new will be set for the new
+        job.
         Finally return the job.
         """
 
@@ -79,6 +94,9 @@ class Job(BaseJobsModel):
             # remove it from the current queue, we'll add it to the new one later
             current_queue = Queue.get_queue(queue_name, current_priority)
             current_queue.waiting.lrem(0, job.get_pk())
+
+        elif fields_if_new:
+            job.set_fields(**fields_if_new)
 
         # add the job to the new queue with a waiting status
 

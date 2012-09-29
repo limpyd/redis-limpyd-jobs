@@ -1,5 +1,7 @@
 from datetime import datetime, timedelta
 
+from limpyd import fields
+
 from limpyd_jobs.models import Queue, Job
 from limpyd_jobs import STATUSES
 
@@ -44,6 +46,22 @@ class QueuesTest(LimpydBaseTest):
         # tests for non existing name
         keys = Queue.get_keys('qux')
         self.assertEqual(keys, [])
+
+    def test_extended_queue_can_accept_other_fields(self):
+        class ExtendedQueue(Queue):
+            namespace = 'test-queuestest'
+            foo = fields.StringField()
+            bar = fields.StringField()
+
+        # create a new queue
+        queue = ExtendedQueue.get_queue(name='test', priority=1, foo='FOO', bar='BAR')
+        self.assertEqual(queue.foo.get(), 'FOO')
+        self.assertEqual(queue.bar.get(), 'BAR')
+
+        # get the same queue, extended fields won't be updated
+        queue = ExtendedQueue.get_queue(name='test', priority=1, foo='FOO2', bar='BAR2')
+        self.assertEqual(queue.foo.get(), 'FOO')
+        self.assertEqual(queue.bar.get(), 'BAR')
 
 
 class JobsTests(LimpydBaseTest):
@@ -132,3 +150,21 @@ class JobsTests(LimpydBaseTest):
         job.hmset(start=start, end=start + timedelta(seconds=2))
         duration = job.duration
         self.assertEqual(duration, timedelta(seconds=2))
+
+    def test_extended_job_can_accept_other_fields(self):
+        class ExtendedJob(Job):
+            namespace = 'test-jobstest'
+            foo = fields.StringField()
+            bar = fields.StringField()
+
+        # create a new job
+        job = ExtendedJob.add_job(identifier='job:1', queue_name='test',
+                                    priority=1, foo='FOO', bar='BAR')
+        self.assertEqual(job.foo.get(), 'FOO')
+        self.assertEqual(job.bar.get(), 'BAR')
+
+        # get the same job, extended fields won't be updated
+        job = ExtendedJob.add_job(identifier='job:1', queue_name='test',
+                                    priority=1, foo='FOO2', bar='BAR2')
+        self.assertEqual(job.foo.get(), 'FOO')
+        self.assertEqual(job.bar.get(), 'BAR')
