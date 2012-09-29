@@ -10,7 +10,7 @@ __all__ = ('BaseJobsModel', 'Queue', 'Job')
 
 
 class BaseJobsModel(related.RelatedModel):
-    collection_mananger_class = collection.ExtendedCollectionManager
+    collection_manager = collection.ExtendedCollectionManager
     database = database.PipelineDatabase()
     namespace = 'jobs'
     abstract = True
