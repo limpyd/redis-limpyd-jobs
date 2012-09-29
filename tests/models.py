@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 
 from limpyd import fields
 
-from limpyd_jobs.models import Queue, Job
+from limpyd_jobs.models import Queue, Job, Error
 from limpyd_jobs import STATUSES
 
 from .base import LimpydBaseTest
@@ -168,3 +168,47 @@ class JobsTests(LimpydBaseTest):
                                     priority=1, foo='FOO2', bar='BAR2')
         self.assertEqual(job.foo.get(), 'FOO')
         self.assertEqual(job.bar.get(), 'BAR')
+
+
+class ErrorsTest(LimpydBaseTest):
+
+    class ExceptionWithCode(Exception):
+        def __init__(self, message, code):
+            super(ErrorsTest.ExceptionWithCode, self).__init__(message)
+            self.message = message
+            self.code = code
+
+    def test_add_error_method_should_add_an_error_instance(self):
+        e = ErrorsTest.ExceptionWithCode('the answer', 42)
+        error1 = Error.add_error(queue_name='test', identifier='job:1', error=e)
+        self.assertEqual(list(Error.collection()), [error1.get_pk()])
+        Error.add_error(queue_name='test', identifier='job:1', error=e)
+        self.assertEqual(len(Error.collection()), 2)
+
+    def test_add_error_can_accept_an_exception_without_code(self):
+        e = Exception('no code')
+        error = Error.add_error(queue_name='test', identifier='job:1', error=e)
+        self.assertEqual(error.code.hget(), None)
+
+    def test_new_error_save_date_and_time_appart(self):
+        e = ErrorsTest.ExceptionWithCode('the answer', 42)
+        day = datetime(2012, 9, 29, 22, 58, 56)
+        error = Error.add_error(queue_name='test', identifier='job:1', error=e,
+                                                                    when=day)
+        self.assertEqual(error.date.hget(), '2012-09-29')
+        self.assertEqual(error.time.hget(), '22:58:56')
+        self.assertEqual(error.datetime, day)
+
+    def test_extended_error_can_accept_other_fields(self):
+        class ExtendedError(Error):
+            namespace = 'test-errorstest'
+            foo = fields.StringField()
+            bar = fields.StringField()
+
+        e = ErrorsTest.ExceptionWithCode('the answer', 42)
+
+        # create a new error
+        error = ExtendedError.add_error(queue_name='test', identifier='job:1',
+                                        error=e, foo='FOO', bar='BAR')
+        self.assertEqual(error.foo.get(), 'FOO')
+        self.assertEqual(error.bar.get(), 'BAR')

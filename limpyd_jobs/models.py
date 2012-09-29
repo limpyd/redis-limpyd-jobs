@@ -1,3 +1,4 @@
+from datetime import datetime
 from dateutil.parser import parse
 
 from limpyd import fields
@@ -6,7 +7,7 @@ from limpyd_extensions import related
 
 from limpyd_jobs import STATUSES
 
-__all__ = ('BaseJobsModel', 'Queue', 'Job')
+__all__ = ('BaseJobsModel', 'Queue', 'Job', 'Error')
 
 
 class BaseJobsModel(related.RelatedModel):
@@ -120,3 +121,54 @@ class Job(BaseJobsModel):
         except:
             raise
             return None
+
+
+class Error(BaseJobsModel):
+    identifier = fields.HashableField(indexable=True)
+    queue_name = fields.HashableField(indexable=True)
+    date = fields.HashableField(indexable=True)
+    time = fields.HashableField()
+    code = fields.HashableField(indexable=True)
+    message = fields.HashableField()
+
+    @classmethod
+    def add_error(cls, queue_name, identifier, error, when=None, **additional_fields):
+        """
+        Add a new error in redis.
+        `identifier` is a job identifier
+        `queue_name` is the name of the queue where the error arrived
+        `error` is an exception, which can has a code (better if it is)
+        `date` is the datetime of the error, utcnow will be used if not defined
+        The new created instance is returned, with additional_fields set for
+        aubclasses.
+        """
+        if when is None:
+            when = datetime.utcnow()
+
+        fields = dict(
+            queue_name=queue_name,
+            identifier=identifier,
+            date=str(when.date()),
+            time=str(when.time()),
+            message=str(error),
+        )
+
+        error_code = getattr(error, 'code', None)
+        if error_code is not None:
+            fields['code'] = error_code
+
+        error = cls(**fields)
+
+        if additional_fields:
+            error.set_fields(**additional_fields)
+
+        return error
+
+    @property
+    def datetime(self):
+        """
+        Property which return a real datetime object based on the date and time
+        fields
+        """
+        date, time = self.hmget('date', 'time')
+        return parse('%s %s' % (date, time))
