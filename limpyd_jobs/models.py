@@ -119,7 +119,6 @@ class Job(BaseJobsModel):
             start, end = self.hmget('start', 'end')
             return parse(end) - parse(start)
         except:
-            raise
             return None
 
 
