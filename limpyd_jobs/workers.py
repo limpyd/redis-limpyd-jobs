@@ -192,21 +192,25 @@ class Worker(object):
             except Exception, e:
                 self.logger.error('Unable to get job: %s' % str(e))
             else:
-                identifier, status = job.hmget('identifier', 'status')
+                identifier = 'pk:%s' % job.get_pk()  # default if failure
+                try:
+                    self.status = 'running'
+                    identifier, status = job.hmget('identifier', 'status')
+                    job._identifier = identifier  # cache
 
-                if status == STATUSES.CANCELED:
-                    self.logger.warning('[%s] job previously canceled' % identifier)
-
-                else:
-                    try:
-                        self.logger.info('[%s] starting' % identifier)
-                        job.start.hset(str(datetime.utcnow()))
-                        self.callback(job, queue)
-                    except Exception, e:
-                        self.job_error(job, queue, e)
+                    if status == STATUSES.CANCELED:
+                        self.job_canceled(job, queue)
                     else:
-                        job.end.hset(str(datetime.utcnow()))
-                        self.job_success(job, queue)
+                        try:
+                            self.job_started(job, queue)
+                            self.callback(job, queue)
+                        except Exception, e:
+                            self.job_error(job, queue, e)
+                        else:
+                            self.job_success(job, queue)
+                except Exception, e:
+                    self.logger.error('[%s] unexpected error: %s' % (
+                                                        identifier, str(e)))
 
         self.status = 'terminated'
         self.run_ended()
@@ -227,27 +231,45 @@ class Worker(object):
         """
         Called when an exception was raised during the execute call for a job.
         """
-        job.status.hset(STATUSES.ERROR)
+        job.hmset(end=str(datetime.utcnow()), status=STATUSES.ERROR)
         queue.errors.rpush(job.get_pk())
 
         if self.save_errors:
             additional_fields = self.additional_error_fields(job, queue, exception)
             self.error_model.add_error(queue_name=queue.name.hget(),
-                                       identifier=job.identifier.hget(),
+                                       identifier=job._identifier,
                                        error=exception,
                                        **additional_fields)
 
         if not message:
-            message = str(exception)
+            message = '[%s] error: %s' % (job._identifier, str(exception))
         self.logger.error(message)
 
     def job_success(self, job, queue, message=None):
         """
         Called just after an execute call was successful.
         """
-        job.status.hset(STATUSES.SUCCESS)
+        job.hmset(end=str(datetime.utcnow()), status=STATUSES.SUCCESS)
         queue.success.rpush(job.get_pk())
 
         if not message:
-            message = '[%s] success, in %ss)' % (job.identifier.hget(), job.duration)
+            message = '[%s] success, in %ss)' % (job._identifier, job.duration)
         self.logger.info(message)
+
+    def job_started(self, job, queue, message=None):
+        """
+        Called just before the execution of the job
+        """
+        job.hmset(start=str(datetime.utcnow()), status=STATUSES.RUNNING)
+
+        if not message:
+            message = '[%s] starting' % job._identifier
+        self.logger.info(message)
+
+    def job_canceled(self, job, queue, message=None):
+        """
+        Called if a job was canceled before we can execute it
+        """
+        if not message:
+            message = '[%s] job previously canceled' % job._identifier
+        self.logger.warning(message)

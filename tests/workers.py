@@ -263,6 +263,23 @@ class WorkerRunTest(LimpydBaseTest):
         with self.assertRaises(DoesNotExist):
             worker.get_queue('foo')
 
+    def test_job_started_method_should_be_called(self):
+        class TestWorker(Worker):
+            passed = False
+
+            def execute():
+                pass
+
+            def job_started(self, job, queue):
+                super(TestWorker, self).job_started(job, queue)
+                self.passed = True
+
+        Job.add_job(identifier='job:1', queue_name='test')
+        worker = TestWorker(name='test', max_loops=1)
+        worker.run()
+
+        self.assertTrue(worker.passed)
+
     def test_callback_should_be_called(self):
         result = {}
 
@@ -385,6 +402,24 @@ class WorkerRunTest(LimpydBaseTest):
 
         with self.assertRaises(ImplementationError):
             worker.run()
+
+    def test_job_canceled_method_should_be_called(self):
+        class TestWorker(Worker):
+            passed = False
+
+            def execute():
+                pass
+
+            def job_canceled(self, job, queue):
+                super(TestWorker, self).job_canceled(job, queue)
+                self.passed = True
+
+        job = Job.add_job(identifier='job:1', queue_name='test')
+        job.status.hset(STATUSES.CANCELED)
+        worker = TestWorker(name='test', max_loops=1)
+        worker.run()
+
+        self.assertTrue(worker.passed)
 
     def test_a_canceled_job_should_be_ignored(self):
         job = Job.add_job('job:1', 'test')
