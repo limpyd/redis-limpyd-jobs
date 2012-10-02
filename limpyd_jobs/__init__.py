@@ -19,3 +19,8 @@ class STATUSES():
     SUCCESS = 's'
     ERROR = 'e'
     CANCELED = 'c'
+
+
+# the imports below are to ease import for users of the module
+from .models import Queue, Job, Error
+from .workers import Worker
