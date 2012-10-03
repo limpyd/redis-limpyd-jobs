@@ -196,10 +196,12 @@ class Worker(object):
                 try:
                     self.status = 'running'
                     identifier, status = job.hmget('identifier', 'status')
-                    job._identifier = identifier  # cache
+                     # some cache, don't count on it on subclasses
+                    job._identifier = identifier
+                    job._status = status
 
-                    if status == STATUSES.CANCELED:
-                        self.job_canceled(job, queue)
+                    if status != STATUSES.WAITING:
+                        self.job_skipped(job, queue)
                     else:
                         try:
                             self.job_started(job, queue)
@@ -266,10 +268,11 @@ class Worker(object):
             message = '[%s] starting' % job._identifier
         self.logger.info(message)
 
-    def job_canceled(self, job, queue, message=None):
+    def job_skipped(self, job, queue, message=None):
         """
-        Called if a job was canceled before we can execute it
+        Called if a job can't be run: canceled, already running or done.
         """
         if not message:
-            message = '[%s] job previously canceled' % job._identifier
+            message = '[%s] job skipped (current status: %s)' % (
+                    STATUSES.by_value(job._status, 'UNKNOWN'), job._identifier)
         self.logger.warning(message)

@@ -403,33 +403,26 @@ class WorkerRunTest(LimpydBaseTest):
         with self.assertRaises(ImplementationError):
             worker.run()
 
-    def test_job_canceled_method_should_be_called(self):
+    def test_job_skipped_method_should_be_called(self):
         class TestWorker(Worker):
             passed = False
 
             def execute():
                 pass
 
-            def job_canceled(self, job, queue):
-                super(TestWorker, self).job_canceled(job, queue)
-                self.passed = True
+            def job_skipped(self, job, queue):
+                super(TestWorker, self).job_skipped(job, queue)
+                self.passed = job._status
 
-        job = Job.add_job(identifier='job:1', queue_name='test')
-        job.status.hset(STATUSES.CANCELED)
-        worker = TestWorker(name='test', max_loops=1)
-        worker.run()
-
-        self.assertTrue(worker.passed)
-
-    def test_a_canceled_job_should_be_ignored(self):
-        job = Job.add_job('job:1', 'test')
-        job.status.hset(STATUSES.CANCELED)
-        queue = Queue.get_queue('test')
-
-        worker = Worker('test', max_loops=1)
-        worker.run()
-
-        self.assertEqual(queue.waiting.llen(), 0)
-        self.assertEqual(queue.success.llen(), 0)
-        self.assertEqual(queue.errors.llen(), 0)
-        self.assertEqual(job.status.hget(), STATUSES.CANCELED)
+        for status in ('CANCELED', 'RUNNING', 'SUCCESS', 'ERROR'):
+            job = Job.add_job(identifier='job:1', queue_name='test')
+            job.status.hset(STATUSES[status])
+            worker = TestWorker(name='test', max_loops=1)
+            worker.run()
+            self.assertEqual(worker.passed, STATUSES[status])
+            # job ignored: keep its status, and removed from queue
+            queue = Queue.get_queue('test')
+            self.assertEqual(queue.waiting.llen(), 0)
+            self.assertEqual(queue.success.llen(), 0)
+            self.assertEqual(queue.errors.llen(), 0)
+            self.assertEqual(job.status.hget(), STATUSES[status])
