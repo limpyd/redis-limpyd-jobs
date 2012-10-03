@@ -4,6 +4,7 @@ import sys
 from limpyd import DEFAULT_CONNECTION_SETTINGS, TEST_CONNECTION_SETTINGS
 from limpyd.contrib.database import PipelineDatabase
 
+from limpyd_jobs import STATUSES
 from limpyd_jobs.models import BaseJobsModel
 
 test_database = PipelineDatabase(**TEST_CONNECTION_SETTINGS)
@@ -97,3 +98,24 @@ class LimpydBaseTestTest(LimpydBaseTest):
         with self.assertNumCommands(1):
             # we know that info do only one command
             self.connection.info()
+
+    def test_statuses_dict_is_ok(self):
+        self.assertTrue(isinstance(STATUSES, dict))
+        for status in ('WAITING', 'RUNNING', 'SUCCESS', 'ERROR', 'CANCELED'):
+            value = status[0].lower()
+            self.assertEqual(getattr(STATUSES, status), value)
+            self.assertEqual(STATUSES.get(status), value)
+            self.assertEqual(STATUSES.by_value(value), status)
+
+        self.assertEqual(len(STATUSES.keys()), 5)
+
+        self.assertEqual(STATUSES.by_value('x', 'UNKNOWN'), 'UNKNOWN')
+
+        with self.assertRaises(ValueError):
+            STATUSES.by_value('x')
+
+        with self.assertRaises(KeyError):
+            STATUSES.UNKNOWN
+
+        with self.assertRaises(KeyError):
+            STATUSES['UNKNOWN']

@@ -7,18 +7,38 @@ __homepage__ = "https://github.com/twidi/redis-limpyd-jobs"
 __version__ = ".".join(map(str, VERSION))
 
 
-class STATUSES():
+class STATUSES(dict):
     """
     All available job's statuses.
     To use this way:
-        job.status.hset(STATUSES.SUCCESS)
+        job.status.hset(STATUSES.SUCCESS)  # or STATUSES['SUCCESS']
     Available statuses: WAITING, RUNNING, SUCCESS, ERROR, CANCELED
+    Use the `by_value` to get the key from a value:
+        STATUSES.by_value(job.status.hget())
+        >> 'SUCCESS'
     """
-    WAITING = 'w'
-    RUNNING = 'r'
-    SUCCESS = 's'
-    ERROR = 'e'
-    CANCELED = 'c'
+    def __getattr__(self, name):
+        return self[name]
+
+    def by_value(self, value, default=None):
+        """
+        Returns the key for the given value
+        """
+        try:
+            return [k for k, v in self.iteritems() if v == value][0]
+        except IndexError:
+            if default is not None:
+                return default
+            raise ValueError('%s' % value)
+
+
+STATUSES = STATUSES(
+        WAITING='w',
+        RUNNING='r',
+        SUCCESS='s',
+        ERROR='e',
+        CANCELED='c',
+    )
 
 
 # the imports below are to ease import for users of the module
