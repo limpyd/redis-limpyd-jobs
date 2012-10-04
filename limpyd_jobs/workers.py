@@ -75,8 +75,7 @@ class Worker(object):
         if self.terminate_gracefuly:
             self.handle_end_signal()
 
-        self.keys = self.queue_model.get_keys(self.name)
-
+        self.keys = []  # list of redis keys to listen
         self.num_loops = 0  # loops counter
         self.end_forced = False  # set it to True in "execute" to force stop just after
         self.status = None  # is set to None/waiting/running by the worker
@@ -167,6 +166,15 @@ class Worker(object):
         """
         raise NotImplementedError('You must implement your own action')
 
+    def update_keys(self):
+        """
+        Update the redis keys to listen for new jobs.
+        """
+        self.keys = self.queue_model.get_keys(self.name)
+        if not self.keys:
+            self.logger.error('No queues with the name %s.' % self.name)
+            self.end_forced = True
+
     def run_started(self):
         """
         Called just before starting to wait for jobs. Actually only do logging.
@@ -183,7 +191,9 @@ class Worker(object):
         if self.status:
             raise ImplementationError('This worker run is already terminated')
 
+        self.update_keys()
         self.run_started()
+
         while not self.must_stop():
             self.num_loops += 1
             self.status = 'waiting'

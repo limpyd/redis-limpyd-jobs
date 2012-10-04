@@ -163,6 +163,7 @@ class WorkerRunTest(LimpydBaseTest):
         queue1 = Queue(name='test', priority=1)
         queue2 = Queue(name='test', priority=2)
         worker = Worker('test')
+        worker.update_keys()
 
         self.assertEqual(worker.keys, [queue2.waiting.key, queue1.waiting.key])
 
@@ -208,6 +209,7 @@ class WorkerRunTest(LimpydBaseTest):
 
         class Thread(threading.Thread):
             def run(self):
+                worker.update_keys()
                 queue, job = worker.wait_for_job()
                 worker.test_content = queue, job
 
@@ -426,3 +428,8 @@ class WorkerRunTest(LimpydBaseTest):
             self.assertEqual(queue.success.llen(), 0)
             self.assertEqual(queue.errors.llen(), 0)
             self.assertEqual(job.status.hget(), STATUSES[status])
+
+    def test_worker_without_queues_should_stop(self):
+        worker = Worker(name='test', max_loops=1)
+        worker.run()
+        self.assertEqual(worker.num_loops, 0)
