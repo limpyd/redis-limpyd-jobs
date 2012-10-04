@@ -82,7 +82,7 @@ By default it contains a few fields:
 
 ##### `identifier`
 
-A string (`HashableField`) to identify the job. 
+A string (`HashableField`, indexed) to identify the job. 
 
 You can't have many jobs with the same identifier in a waiting queue. If you create a new job with an identifier while an other with the same is still in the same waiting queue, what is done depends on the priority of the two jobs:
 - if the new job has a lower (or equal) priority, it's discarded
@@ -97,7 +97,7 @@ Note that by subclassing the `Job` model, you are able to add new fields to a Jo
 
 ##### `status`
 
-A string (`HashableField`) to store the actual status of the job. 
+A string (`HashableField`, indexed) to store the actual status of the job. 
 
 It's a single letter but we provide a class to help using it verbosely: `STATUSES`
 
@@ -111,7 +111,7 @@ When a job is created via the `add_job` class method, its status is set to `STAT
 
 ##### `priority`
 
-A string (`HashableField`) to store the priority of the job.
+A string (`HashableField`, indexed, default = 0) to store the priority of the job.
 
 The priority of a job determines in which Queue object it will be stored. And a worker listen for all queues with a given name and different priorities, but respecting the priority (reverse) order: the higher the priority, the sooner the job will be executed.
 
@@ -169,13 +169,13 @@ By default it contains a few fields:
 
 ##### `name`
 
-A string (`HashableField`), used by the `add_job` method to find the queue in which to store it. Many queues can have the same name, but different priorities.
+A string (`HashableField`, indexed), used by the `add_job` method to find the queue in which to store it. Many queues can have the same name, but different priorities.
 
 This name is also used by a worker to find which queues it needs to wait for.
 
 ##### `priority`
 
-A string (`HashableField`), to store the priority of a queue's jobs. All jobs in a queue are considered having this priority. It's why, as said for the `property` fields of the `Job` model, changing the property of a job doesn't change its real property. But adding a new job with the same identifier for the same queue's name can update the job's priority by moving it to another queue with the correct priority.
+A string (`HashableField`, indexed, default = 0), to store the priority of a queue's jobs. All jobs in a queue are considered having this priority. It's why, as said for the `property` fields of the `Job` model, changing the property of a job doesn't change its real property. But adding a new job with the same identifier for the same queue's name can update the job's priority by moving it to another queue with the correct priority.
 
 As already said, the higher the priority, the sooner the jobs in a queue will be executed. If a queue has a priority of 2, and another queue of the same name has a priority of 0, or 1, *all* jobs in the one with the priority of 2 will be executed (at least fetched) before the others, (quel que soit) the number of workers.
 
@@ -223,7 +223,51 @@ The returned value is a list of redis keys for each `waiting` lists of matching 
 
 ### Error
 
-(documentation is coming...)
+The `Error` model is used to store errors from the job that are not successfully executed by a worker.
+
+Its main purpose is to be able to filter errors, by queue name, job identifier, date, exception class name or code. You can use your own subclass of the `Error` model and then store additional fields, and filter on them.
+
+#### Error fields
+
+##### `idenfitier`
+
+A string (`HashableField`, indexed) to store the identifier of the job that failed.
+
+##### `queue_name`
+
+A string (`HashableField`, indexed) to store the name of the queue the job was in when it failed.
+
+##### `date`
+
+A string (`HashableField`, indexed) to store the date (only the date, not the time) of the error (a string representation of `datetime.utcnow().date()`). This field is indexed so you can filter errors by date, useful to graph errors.
+
+##### `time`
+
+A string (`HashableField`) to store the time (only the time, not the date) of the error (a string representation of `datetime.utcnow().time()`).
+
+##### `type`
+
+A string (`HashableField`, indexed) to store the type of error. It's the class' name of the originally raised exception.
+
+##### `code`
+
+A string (`HashableField`, indexed) to store the value of the `code` attribute of the originally raised exception. Nothing is stored here if there is no such attribute.
+
+##### `message`
+
+A string (`HashableField`) to store the string representation of the originally raised exception.
+
+#### Error properties and methods
+
+There is only one property on the `Error` model:
+
+##### `datetime`
+
+This property returns a `datetime` object based on the content of the `date` and `time` fields of an `Error` object.
+
+#### Error class methods
+
+The `Error` model doesn't provide any class method.
 
 ## The worker(s)
 
