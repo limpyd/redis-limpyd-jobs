@@ -190,6 +190,15 @@ class ErrorsTest(LimpydBaseTest):
         error = Error.add_error(queue_name='test', identifier='job:1', error=e)
         self.assertEqual(error.code.hget(), None)
 
+    def test_add_error_should_store_the_name_of_the_exception(self):
+        e = Exception('foo')
+        error = Error.add_error(queue_name='test', identifier='job:1', error=e)
+        self.assertEqual(error.type.hget(), 'Exception')
+
+        e = ErrorsTest.ExceptionWithCode('the answer', 42)
+        error = Error.add_error(queue_name='test', identifier='job:1', error=e)
+        self.assertEqual(error.type.hget(), 'ExceptionWithCode')
+
     def test_new_error_save_date_and_time_appart(self):
         e = ErrorsTest.ExceptionWithCode('the answer', 42)
         day = datetime(2012, 9, 29, 22, 58, 56)

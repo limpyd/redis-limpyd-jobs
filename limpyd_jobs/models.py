@@ -127,6 +127,7 @@ class Error(BaseJobsModel):
     queue_name = fields.HashableField(indexable=True)
     date = fields.HashableField(indexable=True)
     time = fields.HashableField()
+    type = fields.HashableField(indexable=True)
     code = fields.HashableField(indexable=True)
     message = fields.HashableField()
 
@@ -151,6 +152,13 @@ class Error(BaseJobsModel):
             time=str(when.time()),
             message=str(error),
         )
+
+        try:
+            # exception can be a class (should not, but just in case...)
+            fields['type'] = error.__name__
+        except AttributeError:
+            # or excetion is an instance
+            fields['type'] = error.__class__.__name__
 
         error_code = getattr(error, 'code', None)
         if error_code is not None:
