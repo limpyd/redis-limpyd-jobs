@@ -161,7 +161,65 @@ If you use a subclass of the `Job` model, you can pass additional arguments to t
 
 ### Queue
 
-(documentation is coming...)
+A Queue store a list of waiting jobs with a given priority, and keep a list of successful jobs and ones on error.
+
+#### Queue fields
+
+By default it contains a few fields:
+
+##### `name`
+
+A string (`HashableField`), used by the `add_job` method to find the queue in which to store it. Many queues can have the same name, but different priorities.
+
+This name is also used by a worker to find which queues it needs to wait for.
+
+##### `priority`
+
+A string (`HashableField`), to store the priority of a queue's jobs. All jobs in a queue are considered having this priority. It's why, as said for the `property` fields of the `Job` model, changing the property of a job doesn't change its real property. But adding a new job with the same identifier for the same queue's name can update the job's priority by moving it to another queue with the correct priority.
+
+As already said, the higher the priority, the sooner the jobs in a queue will be executed. If a queue has a priority of 2, and another queue of the same name has a priority of 0, or 1, *all* jobs in the one with the priority of 2 will be executed (at least fetched) before the others, (quel que soit) the number of workers.
+
+##### `waiting`
+
+A list (`ListField`) to store the primary keys of job in the waiting status. It's a fifo list: jobs are appended to the right (via `rpush`, and fetched from the left (via `blpop`)
+
+When fetched, a job from this list is executed, then pushed in the `success` or `error` list, depending of the result of the callback.
+If a job in this waiting list is not in the waiting status, it will be skipped by the worker.
+
+##### `success`
+
+A list (`ListField`) to store the primary keys of jobs fetched from the waiting list and successfully executed. 
+
+##### `error`
+
+A list (`ListField`) to store the primary keys of jobs fetched from the waiting list for which the execution failed.
+
+#### Queue properties and methods
+
+The `Queue` model has no specific properties or method.
+
+#### Queue class methods
+
+The `Queue` model provides two class methods:
+
+##### `get_queue`
+
+The `get_queue` class method is the recommended way to get a `Queue` object. Given a name and a priority, it will return the found queue or create a queue if no matching one exist.
+
+Arguments:
+
+- name
+    The name of the queue to get or create
+
+- priority
+    The priority of the queue to get or create
+
+If you use a subclass of the `Queue` model, you can pass additional arguments to the `get_queue` method simply by passing them as named arguments, they will be save if a new queue is created (but not if an existing queue is found)
+
+##### `get_keys`
+
+The `get_keys` class method returns all the existing queue with a given name, sorted by priority (reverse order: the highest priorities come first).
+The returned value is a list of redis keys for each `waiting` lists of matching queues. It's used internally by the workers as argument to the `blpop` redis command.
 
 ### Error
 
