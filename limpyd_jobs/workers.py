@@ -157,7 +157,7 @@ class Worker(object):
         else:
             self.logger.critical('Catched %s signal: stopping right now' % signal_name)
 
-        self.end_signal_catched = True
+        self.end_signal_catched = self.end_forced = True
 
     def execute(self, job, queue):
         """
