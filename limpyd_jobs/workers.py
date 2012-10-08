@@ -79,7 +79,7 @@ class Worker(object):
         self.num_loops = 0  # loops counter
         self.end_forced = False  # set it to True in "execute" to force stop just after
         self.status = None  # is set to None/waiting/running by the worker
-        self.end_signal_catched = False  # internaly set to True if end signal catched
+        self.end_signal_caught = False  # internaly set to True if end signal caught
 
     @staticmethod
     def _assert_correct_model(model_to_check, model_reference, obj_name):
@@ -117,7 +117,7 @@ class Worker(object):
         """
         Return True if the worker must stop when the current loop is over.
         """
-        return self.terminate_gracefuly and self.end_signal_catched \
+        return self.terminate_gracefuly and self.end_signal_caught \
             or self.num_loops >= self.max_loops or self.end_forced
 
     def wait_for_job(self):
@@ -146,7 +146,7 @@ class Worker(object):
 
     def catch_end_signal(self, signum, frame):
         """
-        When a SIGINT/SIGTERM signal is catched, this method is called, asking
+        When a SIGINT/SIGTERM signal is caught, this method is called, asking
         for the worker to terminate as soon as possible.
         """
         signal_name = dict((getattr(signal, n), n) for n in dir(signal)
@@ -157,7 +157,7 @@ class Worker(object):
         else:
             self.logger.critical('Catched %s signal: stopping right now' % signal_name)
 
-        self.end_signal_catched = self.end_forced = True
+        self.end_signal_caught = self.end_forced = True
 
     def execute(self, job, queue):
         """

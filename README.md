@@ -271,10 +271,315 @@ The `Error` model doesn't provide any class method.
 
 ## The worker(s)
 
-### Worker class
+### The Worker class
 
-(documentation is coming...)
+The `Worker` class does all the logic, working with `Queue` and `Job` models.
 
+The main behavior is:
+- reading queue keys for the given name
+- waiting for a job available in the queue
+- executing the job
+- manage success or error
+- exit after a defined number of jobs
+
+The class is split in many short methods so that you can subclass it to change/add/remove whatever you want.
+
+#### Constructor arguments and worker's attributes
+
+Each of the following worker's attributes can be set by an argument in the constructor, using the exact same name. It's why the two are described here together.
+
+##### `name`
+
+The name of the worker, used to get all queues with this name. Default to `None`, but if not set, will raise an `ImplementationError`
+
+##### `job_model`
+
+The model to use for jobs. By default it's the `Job` model included in `limpyd_jobs`, but you can use a subclass of the default model to add fields, methods...
+
+##### `queue_model`
+
+The model to use for queues. By default it's the `Queue` model included in `limpyd_jobs`, but you can use a subclass of the default model to add fields, methods...
+
+##### `error_model`
+
+The model to use for saving errors. By default it's the `Error` model included in `limpyd_jobs`, but you can use a subclass of the default model to add fields, methods...
+
+##### `logger_base_name`
+
+`limpyd_jobs` uses the python `logging` module, so this is the name to use for the logger created for the worker. The default value is `LOGGER_BASE_NAME + '.%s'`, with `LOGGER_BASE_NAME` defined in `limpyd_jobs.workers` with a value of "limpyd_jobs", and '%s' will be replaced by the `name` attribute.
+
+##### `logger_level`
+
+It's the level set for the logger created with the name defined in `logger_base_name`.
+
+##### `save_errors`
+
+A boolean, default to True, to indicate if we have to save errors in the `Error` model (or the one defined in `error_model`) when the execution of the job is not successful.
+
+##### `max_loops`
+
+The max number of loops (fetching + executing a job) to do in the worker lifetime, default to 1000. Note that after this number of loop, the worker ends (the `run` method cannot be executed again.)
+
+##### `terminate_gracefully`
+
+To avoid interrupting the execution of a job, if `terminate_gracefully` is set to True (the default), the `SIGINT` and `SIGTERM` signals are caught, asking the worker to exit when the current jog is done.
+
+##### `callback`
+
+The callback is the function to run when a job is fetched. By default it's the `execute` method of the worker, but you can pass any function that accept a job and a queue as argument. The return value of the callback will be ignored, and the job will be considered successful, unless an exception is raised in which case it's an error.
+
+#### Other worker's attributes
+
+In case on subclassing, you can need these attributes, created and defined during the use of the worker:
+
+##### `keys`
+
+A list of keys of queues waiting lists, which are listened by the worker for new jobs. Filled by the `update_keys` method.
+
+##### `status`
+
+The current status of the worker. `None` by default until the `run` method is called. Then it's set to `"waiting"` while the worker waits for new jobs. When a job is fetched, the status is set to `"running"`. And finally, when the loop is over, it's set to `"terminated"`. 
+If the status is not `None`, the `run` method cannot be called.
+
+##### `logger`
+
+The logger (from the `logging` python module) defined by the `set_logger` method.
+
+##### `num_loops`
+
+The number of loops done by the worker, incremented each time a job is fetched from a waiting list, even if the job is skipped (bad status...), or in error.
+When this number equals the `max_loops` attribute, the worker ends.
+
+##### `end_forced`
+
+When `True`, ask for the worker to terminate itself after executing the current job. It can be set to `True` manually, or when:
+- there is no key to wait for in redis
+- a SIGINT/SIGTERM signal is caught
+
+##### `end_signal_caught`
+
+This boolean is set to `True` when a SIGINT/SIGTERM is caught (only if the `terminate_gracefully` is `True`)
+
+##### `connection`
+
+It's a property, not an attribute, to get the current connection to the redis server.
+
+#### Worker's methods
+
+As said before, the `Worker` class in spit in many little methods, to ease subclassing. Here is the list of public methods:
+
+##### `__init__`
+
+Signature:     
+
+```python
+    def __init__(self, name=None, callback=None,
+                 queue_model=None, job_model=None, error_model=None,
+                 logger_base_name=None, logger_level=None, save_errors=None,
+                 max_loops=None, terminate_gracefuly=None):
+```
+Returns nothing.
+
+It's the constructor (you know that ;) ) of the `Worker` class, excepting all arguments that can also be defined as class attributes.
+It validates these arguments, prepares the logging and initializes other attributes.
+
+You can override it to add, validate, initialize other arguments or attributes.
+
+##### `handle_end_signal`
+
+Signature:
+
+```python
+    def handle_end_signal(self)
+```
+Returns nothing.
+
+It's called in the constructor if `terminate_gracefully` is True. It plugs the SIGINT and SIGTERM signal to the `catch_end_signal` method.
+
+You can override it to catch more signals or do some checked before plugging them to the `catch_end_signal` method.
+
+##### `set_logger`
+
+Signature:
+
+```python
+def set_logger(self)
+```
+Returns nothing.
+
+It's called in the constructor to initialize the logger, using `logger_base_name` and `logger_level`, saving it in `self.logger`.
+
+##### `must_stop`
+
+Signature:
+
+```python
+def must_stop(self)
+```
+Returns boolean.
+
+It's called on the main loop, to exit it on some conditions: a end signal was caught, the max_loops number was reached, or `end_forced` was set to True.
+
+##### `wait_for_job`
+
+Signature:
+
+```python
+def wait_for_job(self)
+```
+Returns a tuple with a Queue and a Job
+
+This method is called during the loop, to wait for available job in the waiting lists. When one job is fetched, returns the queue (an instance of the model defined by `queue_model`) on which the job was found, and the job itself (an instance of the model defined by `job_model`).
+
+##### `get_job`
+
+Signature:
+
+```python
+def get_job(self, job_pk)
+```
+Returns a Job
+
+Called during `wait_for_job` to get a real job object based on the primary key fetched from the waiting lists.
+
+##### `get_queue`
+
+Signature:
+
+```python
+def get_queue(self, queue_redis_key)
+```
+Returns a Queue
+
+Called during `wait_for_job` to get a real queue object based on the key returned by redis telling us in which list the job was found. This key is not the primary key of the queue, but the redis key of it's waiting field.
+
+##### `catch_end_signal`
+
+Signature:
+
+```python
+def catch_end_signal(self, signum, frame)
+```
+Returns nothing
+
+It's called when a SIGINT/SIGTERM signal is caught. It's simply set `end_signal_caught` and `end_forced` to True, to tell the worker to terminate as soon as possible.
+
+##### `execute`
+
+Signature:
+
+```python
+def execute(self, job, queue)
+```
+Returns nothing
+
+This method is called if no `callback` argument is provided when initiating the worker. But raises a `NotImplementedError` by default. To use it (without passing the `callback` argument), you must override it in your own subclass.
+If the execution is successful, no return value is attended. And if a error occurred, an exception must be raised.
+
+##### `update_keys`
+
+Signature:
+
+```python
+def update_keys(self)
+```
+Returns nothing
+
+Calling this method updates the internal `keys` attributes, which contains redis keys of the waiting lists of all queues listened by the worker (the ones with the same name).
+It's actually called at the beginning of the `run` method.
+Note that if a queue with a specific priority doesn't exist when this method is called, but later, by adding a job with `add_job`, the worker will ignore it unless this `update_keys` method was called again.
+
+##### `run`
+
+Signature:
+
+```python
+def run(self)
+```
+Returns nothing
+
+It's the main method of the worker, with all the logic: while we don't have to stop, fetch a job from redis, and if this job is really in waiting state, execute it, and to something depending of the status of the execution (success, error...).
+In addition to the methods that do real stuff (`update_keys`, `wait_for_job`), some other methods are called during the execution: `run_started`, `run_ended`, about the run, and `job_skipped`, `job_started`, `job_success` and `job_error` about jobs. You can override these methods in subclasses to adapt the behavior depending on your needs.
+
+##### `run_started`
+
+Signature:
+
+```python
+def run_started(self)
+```
+Returns nothing
+
+This method is called in the `run` method after the keys are computed using `update_keys`, just before starting the loop. By default it does nothing but a log.info.
+
+##### `run_ended`
+
+Signature:
+
+```python
+def run_ended(self)
+```
+Returns nothing
+
+This method is called just before exiting the `run` method. By default it does nothing but a log.info.
+
+##### `job_skipped`
+
+Signature:
+
+```python
+def job_skipped(self, job, queue, message=None)
+```
+Returns nothing
+
+When a job is fetched in the `run` method, its status is fetched. If this status is not `STATUSES.WAITING`, the `job_skipped` method is called, with two main arguments: the job and the queue in which it was found.
+The `message` argument is here only to help you override the method to only change the message computed, letting the default method doing its internal stuff which in fact is nothing else for `job_skipped` than logging this message.
+
+##### `job_started`
+
+Signature:
+
+```python
+def job_started(self, job, queue, message=None)
+```
+Returns nothing
+
+When the job is fetched and its status verified (it must be `STATUSES.WAITING`), the `job_started` method is called, just before the callback (or the `execute` method if no callback is defined), with the job and the queue in which it was found.
+The `message` argument is here only to help you override the method to only change the message computed, letting the default method doing its internal stuff which is simply updating the `start` and `status` fields of the job, then logging the message.
+
+##### `job_success`
+
+Signature:
+
+```python
+def job_started(self, job, queue, message=None)
+
+```
+Returns nothing
+
+When the callback (or the `execute` method) is finished, without having raised any exception, the job is considered successful, and the `job_success` method is called, with the job and the queue in which it was found.
+The `message` argument is here only to help you override the method to only change the message computed, letting the default method doing its internal stuff which is updating the `start` and `status` fields of the job, moving the job into the `success` list of the queue and then logging the message.
+
+##### `job_error`
+
+Signature:
+```python
+def job_error(self, job, queue, exception, message=None)
+```
+Returns nothing
+
+When the callback (or the `execute` method) is terminated by raising an exception, and the `job_error` method is called, with the job and the queue in which it was found, and the raised exception.
+The `message` argument is here only to help you override the method to only change the message computed, letting the default method doing its internal stuff which is updating the `start` and `status` fields of the job, moving the job into the `error` list of the queue, adding a new error object (if `save_errors` is True) and then logging the message.
+
+##### `additional_error_fields`
+
+Signature:
+```python
+def additional_error_fields(self, job, queue, exception)
+```
+Returns a dictionary of fields to add to the error object.
+
+This method is called by `job_error` to let you define a dictionary of fields/values to add to the error object which will be created, if you use a subclass of the `Error` model, defined in `error_model`.
 
 ## The end.
 
