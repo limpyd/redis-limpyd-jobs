@@ -183,7 +183,7 @@ As already said, the higher the priority, the sooner the jobs in a queue will be
 
 A list (`ListField`) to store the primary keys of job in the waiting status. It's a fifo list: jobs are appended to the right (via `rpush`, and fetched from the left (via `blpop`)
 
-When fetched, a job from this list is executed, then pushed in the `success` or `error` list, depending of the result of the callback.
+When fetched, a job from this list is executed, then pushed in the `error` or `success` list, depending if the callback raised an exception.
 If a job in this waiting list is not in the waiting status, it will be skipped by the worker.
 
 ##### `success`
@@ -326,7 +326,8 @@ To avoid interrupting the execution of a job, if `terminate_gracefully` is set t
 
 ##### `callback`
 
-The callback is the function to run when a job is fetched. By default it's the `execute` method of the worker, but you can pass any function that accept a job and a queue as argument. The return value of the callback will be ignored, and the job will be considered successful, unless an exception is raised in which case it's an error.
+The callback is the function to run when a job is fetched. By default it's the `execute` method of the worker (which, if not overridden, raises a `NotImplemented` error) , but you can pass any function that accept a job and a queue as argument.
+If this callback (or the `execute` method) raises an exception, the job is considered in error. In the other case, it's considered successful and the return value is passed to the `job_success` method, to let you do what you want with it.
 
 #### Other worker's attributes
 
@@ -471,10 +472,10 @@ Signature:
 ```python
 def execute(self, job, queue)
 ```
-Returns nothing
+Returns nothing by default
 
 This method is called if no `callback` argument is provided when initiating the worker. But raises a `NotImplementedError` by default. To use it (without passing the `callback` argument), you must override it in your own subclass.
-If the execution is successful, no return value is attended. And if a error occurred, an exception must be raised.
+If the execution is successful, no return value is attended, but if any, it will be passed to the `job_success` method. And if a error occurred, an exception must be raised, which will be passed to the `job_error` method.
 
 ##### `update_keys`
 
@@ -552,12 +553,12 @@ The `message` argument is here only to help you override the method to only chan
 Signature:
 
 ```python
-def job_started(self, job, queue, message=None)
+def job_success(self, job, queue, job_result, message=None)
 
 ```
 Returns nothing
 
-When the callback (or the `execute` method) is finished, without having raised any exception, the job is considered successful, and the `job_success` method is called, with the job and the queue in which it was found.
+When the callback (or the `execute` method) is finished, without having raised any exception, the job is considered successful, and the `job_success` method is called, with the job and the queue in which it was found, and the return value of the callback method.
 The `message` argument is here only to help you override the method to only change the message computed, letting the default method doing its internal stuff which is updating the `start` and `status` fields of the job, moving the job into the `success` list of the queue and then logging the message.
 
 ##### `job_error`

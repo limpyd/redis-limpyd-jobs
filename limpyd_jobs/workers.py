@@ -163,6 +163,8 @@ class Worker(object):
         """
         The method to run for a job when got bak from the queue if no callback
         was defined on __init__.
+        The optional return value of this function will be passed to the
+        job_success method.
         """
         raise NotImplementedError('You must implement your own action')
 
@@ -215,11 +217,11 @@ class Worker(object):
                     else:
                         try:
                             self.job_started(job, queue)
-                            self.callback(job, queue)
+                            job_result = self.callback(job, queue)
                         except Exception, e:
                             self.job_error(job, queue, e)
                         else:
-                            self.job_success(job, queue)
+                            self.job_success(job, queue, job_result)
                 except Exception, e:
                     self.logger.error('[%s] unexpected error: %s' % (
                                                         identifier, str(e)))
@@ -257,9 +259,10 @@ class Worker(object):
             message = '[%s] error: %s' % (job._identifier, str(exception))
         self.logger.error(message)
 
-    def job_success(self, job, queue, message=None):
+    def job_success(self, job, queue, job_result, message=None):
         """
         Called just after an execute call was successful.
+        job_result is the value returned by the callback, if any.
         """
         job.hmset(end=str(datetime.utcnow()), status=STATUSES.SUCCESS)
         queue.success.rpush(job.get_pk())

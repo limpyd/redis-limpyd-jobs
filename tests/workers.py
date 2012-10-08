@@ -197,7 +197,7 @@ class WorkerRunTest(LimpydBaseTest):
         worker.end_forced = True
         self.assertEqual(worker.must_stop(), True)
         worker.end_forced = False
-        worker.end_signal_catched = True
+        worker.end_signal_caught = True
         self.assertEqual(worker.must_stop(), True)
         worker.terminate_gracefuly = False
         self.assertEqual(worker.must_stop(), False)
@@ -297,16 +297,24 @@ class WorkerRunTest(LimpydBaseTest):
         self.assertEqual(result, {'job': job.get_pk(), 'queue': queue.get_pk()})
 
     def test_job_success_method_should_be_called(self):
-        def callback(job, queue):
-            pass
+        class TestWorker(Worker):
+            passed = None
+
+            def execute(self, job, queue):
+                return 42
+
+            def job_success(self, job, queue, job_result, message=None):
+                super(TestWorker, self).job_success(job, queue, job_result, message)
+                self.passed = job_result
 
         job = Job.add_job(identifier='job:1', queue_name='test')
         queue = Queue.get_queue(name='test')
-        worker = Worker(name='test', callback=callback, max_loops=1)
+        worker = TestWorker(name='test', max_loops=1)
         worker.run()
 
         self.assertEqual(job.status.hget(), STATUSES.SUCCESS)
         self.assertTrue(job.get_pk() in queue.success.lmembers())
+        self.assertEqual(worker.passed, 42)
 
     def test_job_error_method_should_be_called(self):
         class ExceptionWithCode(Exception):
@@ -393,7 +401,7 @@ class WorkerRunTest(LimpydBaseTest):
         worker = TestWorker('test', max_loops=2)
         worker.run()
 
-        self.assertEqual(worker.end_signal_catched, True)
+        self.assertEqual(worker.end_signal_caught, True)
         self.assertEqual(queue.success.llen(), 1)
         self.assertEqual(queue.waiting.llen(), 1)
 
