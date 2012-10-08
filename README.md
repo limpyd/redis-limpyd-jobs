@@ -329,6 +329,12 @@ To avoid interrupting the execution of a job, if `terminate_gracefully` is set t
 The callback is the function to run when a job is fetched. By default it's the `execute` method of the worker (which, if not overridden, raises a `NotImplemented` error) , but you can pass any function that accept a job and a queue as argument.
 If this callback (or the `execute` method) raises an exception, the job is considered in error. In the other case, it's considered successful and the return value is passed to the `job_success` method, to let you do what you want with it.
 
+##### `timeout`
+
+The timeout is used as parameter to the `blpop` redis command we use to fetch jobs from waiting lists. It's 30 seconds by default but you can change it any positive numbers (in seconds). You can set it to `0` if you don't want any timeout be applied to the `blpop` command. 
+It's better to always set a timeout, to reenter the main loop and call the `must_stop` method to see if the worker must exit.
+Note that the number of loops is not updated in this case, so a little `timeout` won't alter the number of loops defined by `max_loops`.
+
 #### Other worker's attributes
 
 In case on subclassing, you can need these attributes, created and defined during the use of the worker:

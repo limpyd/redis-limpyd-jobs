@@ -49,6 +49,7 @@ class WorkerArgumentsTest(LimpydBaseTest):
         self.assertEqual(worker.max_loops, 1000)
         self.assertEqual(worker.save_errors, True)
         self.assertEqual(worker.terminate_gracefuly, True)
+        self.assertEqual(worker.timeout, 30)
 
     def test_worker_arguements_should_be_saved(self):
         def callback(job, queue):
@@ -64,7 +65,8 @@ class WorkerArgumentsTest(LimpydBaseTest):
                     logger_level=logging.DEBUG,
                     max_loops=500,
                     terminate_gracefuly=False,
-                    save_errors=False
+                    save_errors=False,
+                    timeout=20
                 )
 
         self.assertEqual(worker.name, 'test')
@@ -77,6 +79,7 @@ class WorkerArgumentsTest(LimpydBaseTest):
         self.assertEqual(worker.max_loops, 500)
         self.assertEqual(worker.save_errors, False)
         self.assertEqual(worker.terminate_gracefuly, False)
+        self.assertEqual(worker.timeout, 20)
 
     def test_worker_subclass_attributes_should_be_used(self):
         class TestWorker(Worker):
@@ -89,6 +92,7 @@ class WorkerArgumentsTest(LimpydBaseTest):
             logger_level = logging.DEBUG
             terminate_gracefuly = False
             save_errors = False
+            timeout = 20
 
         worker = TestWorker()
 
@@ -101,6 +105,7 @@ class WorkerArgumentsTest(LimpydBaseTest):
         self.assertEqual(worker.max_loops, 500)
         self.assertEqual(worker.save_errors, False)
         self.assertEqual(worker.terminate_gracefuly, False)
+        self.assertEqual(worker.timeout, 20)
 
     def test_worker_subclass_attributes_should_be_overriden_by_arguments(self):
         class OtherTestQueue(Queue):
@@ -122,6 +127,7 @@ class WorkerArgumentsTest(LimpydBaseTest):
             logger_level = logging.DEBUG
             terminate_gracefuly = False
             save_errors = False
+            timeout = 20
 
         worker = Worker(
                     name='testfoo',
@@ -132,7 +138,8 @@ class WorkerArgumentsTest(LimpydBaseTest):
                     logger_level=logging.INFO,
                     max_loops=200,
                     terminate_gracefuly=True,
-                    save_errors=True
+                    save_errors=True,
+                    timeout = 40
                 )
 
         self.assertEqual(worker.name, 'testfoo')
@@ -144,6 +151,7 @@ class WorkerArgumentsTest(LimpydBaseTest):
         self.assertEqual(worker.max_loops, 200)
         self.assertEqual(worker.save_errors, True)
         self.assertEqual(worker.terminate_gracefuly, True)
+        self.assertEqual(worker.timeout, 40)
 
     def test_bad_model_should_be_rejected(self):
         class FooBar(object):

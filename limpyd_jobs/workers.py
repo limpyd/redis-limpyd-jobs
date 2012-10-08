@@ -27,6 +27,8 @@ class Worker(object):
 
     # maximum number of loops to run
     max_loops = 1000
+    # max delay for blpop
+    timeout = 30
 
     # we want to intercept SIGTERM and SIGINT signals, to stop gracefuly
     terminate_gracefuly = True
@@ -34,7 +36,7 @@ class Worker(object):
     def __init__(self, name=None, callback=None,
                  queue_model=None, job_model=None, error_model=None,
                  logger_base_name=None, logger_level=None, save_errors=None,
-                 max_loops=None, terminate_gracefuly=None):
+                 max_loops=None, terminate_gracefuly=None, timeout=None):
         """
         Create the worker by saving arguments, doing some checks, preparing
         logger and signals management, and getting queues keys.
@@ -64,6 +66,8 @@ class Worker(object):
             self.terminate_gracefuly = terminate_gracefuly
         if save_errors is not None:
             self.save_errors = save_errors
+        if timeout is not None:
+            self.timeout = timeout
 
         # prepare logging
         if logger_base_name is not None:
@@ -124,7 +128,7 @@ class Worker(object):
         """
         Use a redis blocking list call to wait for a job, and return it.
         """
-        queue_redis_key, job_pk = self.connection.blpop(self.keys)
+        queue_redis_key, job_pk = self.connection.blpop(self.keys, self.timeout)
         self.status = 'running'
         return self.get_queue(queue_redis_key), self.get_job(job_pk)
 
@@ -197,13 +201,17 @@ class Worker(object):
         self.run_started()
 
         while not self.must_stop():
-            self.num_loops += 1
             self.status = 'waiting'
             try:
-                queue, job = self.wait_for_job()
+                queue_and_job = self.wait_for_job()
+                if queue_and_job is None:
+                    # timeout for blpop
+                    continue
+                queue, job = queue_and_job
             except Exception, e:
                 self.logger.error('Unable to get job: %s' % str(e))
             else:
+                self.num_loops += 1
                 identifier = 'pk:%s' % job.get_pk()  # default if failure
                 try:
                     self.status = 'running'
