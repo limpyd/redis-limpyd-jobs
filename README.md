@@ -129,6 +129,15 @@ A string (`HashableField`) to store the date and time (a string representation o
 
 It's useful in combination of the `start` field to calculate the job duration.
 
+#### Job attributes
+
+There is only one attribute on the `Job` model, but it is very important:
+
+##### `queue_model`
+
+When adding jobs via the `add_job` method, the model defined in this attribute will be used to get or create a queue. It's set by default to `Queue` but if you want to update it to your own model, you must subclass the `Job` model too, and update this attribute.
+Note that if you don't subclass the `Job` model, you can pass the `queue_model` argument to the `add_job` method.
+
 #### Job properties and methods
 
 The `Job` model contains only one property, and no methods:
@@ -155,6 +164,9 @@ Arguments:
 
 - `priority=0`
     The priority of the new job, or the new priority of an already existing job, if this priority is higher of the existing one.
+
+- `queue_model`
+    The to use to store queues. By default, it's set to `Queue`, defined in the `queue_model` attribute of the `Job` model. If the argument is not set, the attribute will be used. Be careful to set it as attribute in your subclass, or as argument in `add_job` or the default `Queue` model will be used and jobs won't be saved in the expected queue.
     
 
 If you use a subclass of the `Job` model, you can pass additional arguments to the `add_job` method simply by passing them as named arguments, they will be save if a new job is created (but not if an existing job is found in a waiting queue)
@@ -193,6 +205,10 @@ A list (`ListField`) to store the primary keys of jobs fetched from the waiting 
 ##### `error`
 
 A list (`ListField`) to store the primary keys of jobs fetched from the waiting list for which the execution failed.
+
+#### Queue attributes
+
+The `Queue` model has no specific attribute.
 
 #### Queue properties and methods
 

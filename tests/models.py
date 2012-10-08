@@ -169,6 +169,52 @@ class JobsTests(LimpydBaseTest):
         self.assertEqual(job.foo.get(), 'FOO')
         self.assertEqual(job.bar.get(), 'BAR')
 
+    def test_using_a_subclass_of_queue_should_work(self):
+        class TestQueue(Queue):
+            namespace = 'test_using_a_subclass_of_queue_should_work'
+
+        class TestJob(Job):
+            namespace = 'test_using_a_subclass_of_queue_should_work'
+
+        # not specifying queue_model should use the default Queue model
+        default_queue = Queue.get_queue('test1')
+        queue = TestQueue.get_queue('test1')
+        Job.add_job(identifier='job:1', queue_name='test1')
+        self.assertEqual(queue.waiting.llen(), 0)
+        self.assertEqual(default_queue.waiting.llen(), 1)
+
+        # idem with a subclass of job
+        default_queue = Queue.get_queue('test2')
+        queue = TestQueue.get_queue('test2')
+        TestJob.add_job(identifier='job:2', queue_name='test2')
+        self.assertEqual(queue.waiting.llen(), 0)
+        self.assertEqual(default_queue.waiting.llen(), 1)
+
+        # specifiying a queue_model in add_job should use the wanted queue
+        default_queue = Queue.get_queue('test3')
+        queue = TestQueue.get_queue('test3')
+        Job.add_job(identifier='job:3', queue_name='test3', queue_model=TestQueue)
+        self.assertEqual(queue.waiting.llen(), 1)
+        self.assertEqual(default_queue.waiting.llen(), 0)
+
+        # idem with a subclass of job
+        default_queue = Queue.get_queue('test4')
+        queue = TestQueue.get_queue('test4')
+        TestJob.add_job(identifier='job:4', queue_name='test4', queue_model=TestQueue)
+        self.assertEqual(queue.waiting.llen(), 1)
+        self.assertEqual(default_queue.waiting.llen(), 0)
+
+        # now test with a queue_model defined in the job class
+        class TestJobWithQueueModel(Job):
+            namespace = 'test_using_a_subclass_of_queue_should_work'
+            queue_model = TestQueue
+
+        default_queue = Queue.get_queue('test5')
+        queue = TestQueue.get_queue('test5')
+        TestJobWithQueueModel.add_job(identifier='job:5', queue_name='test5')
+        self.assertEqual(queue.waiting.llen(), 1)
+        self.assertEqual(default_queue.waiting.llen(), 0)
+
 
 class ErrorsTest(LimpydBaseTest):
 

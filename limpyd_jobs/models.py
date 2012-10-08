@@ -65,8 +65,10 @@ class Job(BaseJobsModel):
     start = fields.HashableField()
     end = fields.HashableField()
 
+    queue_model = Queue
+
     @classmethod
-    def add_job(cls, identifier, queue_name, priority=0, **fields_if_new):
+    def add_job(cls, identifier, queue_name, priority=0, queue_model=None, **fields_if_new):
         """
         Add a job to a queue.
         If this job already exists, check it's current priority. If its higher
@@ -75,9 +77,11 @@ class Job(BaseJobsModel):
         job.
         Finally return the job.
         """
+        if queue_model is None:
+            queue_model = cls.queue_model
 
         # the queue where we want to add the job
-        queue = Queue.get_queue(queue_name, priority)
+        queue = queue_model.get_queue(queue_name, priority)
 
         # create the job or get an existing one
         job, created = cls.get_or_connect(identifier=identifier, status=STATUSES.WAITING)
@@ -93,7 +97,7 @@ class Job(BaseJobsModel):
             job.status.hset(STATUSES.CANCELED)
 
             # remove it from the current queue, we'll add it to the new one later
-            current_queue = Queue.get_queue(queue_name, current_priority)
+            current_queue = queue_model.get_queue(queue_name, current_priority)
             current_queue.waiting.lrem(0, job.get_pk())
 
         elif fields_if_new:
