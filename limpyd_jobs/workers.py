@@ -195,9 +195,14 @@ class Worker(object):
         """
         # if status is not None, we already had a run !
         if self.status:
+            self.status = 'aborted'
             raise ImplementationError('This worker run is already terminated')
 
         self.update_keys()
+        if self.end_forced:
+            self.status = 'aborted'
+            return
+
         self.run_started()
 
         while not self.must_stop():
