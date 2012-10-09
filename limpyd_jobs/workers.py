@@ -128,7 +128,10 @@ class Worker(object):
         """
         Use a redis blocking list call to wait for a job, and return it.
         """
-        queue_redis_key, job_pk = self.connection.blpop(self.keys, self.timeout)
+        blpop_result = self.connection.blpop(self.keys, self.timeout)
+        if blpop_result is None:
+            return None
+        queue_redis_key, job_pk = blpop_result
         self.status = 'running'
         return self.get_queue(queue_redis_key), self.get_job(job_pk)
 
