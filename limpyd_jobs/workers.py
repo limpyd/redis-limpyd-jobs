@@ -111,6 +111,21 @@ class Worker(object):
         self.logger.setLevel(self.logger_level)
 
     @property
+    def id(self):
+        """
+        Return an identifier for the worker to use in logging
+        """
+        if not hasattr(self, '_id'):
+            self._id = '%x' % id(self)
+        return self._id
+
+    def log(self, message, level='info'):
+        """
+        Call self.logger with the given level (default to "info") and message
+        """
+        getattr(self.logger, level)('[%s] %s' % (self.id, message))
+
+    @property
     def connection(self):
         """
         Return the redis connection to use.
@@ -160,9 +175,11 @@ class Worker(object):
                         if n.startswith('SIG') and '_' not in n).get(signum, signum)
 
         if self.status == 'running':
-            self.logger.critical('Catched %s signal: stopping after current job' % signal_name)
+            self.log('Catched %s signal: stopping after current job' % signal_name,
+                     level='critical')
         else:
-            self.logger.critical('Catched %s signal: stopping right now' % signal_name)
+            self.log('Catched %s signal: stopping right now' % signal_name,
+                     level='critical')
 
         self.end_signal_caught = self.end_forced = True
 
@@ -181,14 +198,14 @@ class Worker(object):
         """
         self.keys = self.queue_model.get_keys(self.name)
         if not self.keys:
-            self.logger.error('No queues with the name %s.' % self.name)
+            self.log('No queues with the name %s.' % self.name, level='error')
             self.end_forced = True
 
     def run_started(self):
         """
         Called just before starting to wait for jobs. Actually only do logging.
         """
-        self.logger.info('Run started.')
+        self.log('Run started.')
 
     def run(self):
         """
@@ -217,7 +234,7 @@ class Worker(object):
                     continue
                 queue, job = queue_and_job
             except Exception, e:
-                self.logger.error('Unable to get job: %s' % str(e))
+                self.log('Unable to get job: %s' % str(e), level='error')
             else:
                 self.num_loops += 1
                 identifier = 'pk:%s' % job.get_pk()  # default if failure
@@ -239,8 +256,8 @@ class Worker(object):
                         else:
                             self.job_success(job, queue, job_result)
                 except Exception, e:
-                    self.logger.error('[%s] unexpected error: %s' % (
-                                                        identifier, str(e)))
+                    self.log('[%s] unexpected error: %s' % (identifier, str(e)),
+                             level='error')
 
         self.status = 'terminated'
         self.run_ended()
@@ -249,7 +266,7 @@ class Worker(object):
         """
         Called just after ending the run loop. Actually only do logging.
         """
-        self.logger.info('Run terminated, with %d loops.' % self.num_loops)
+        self.log('Run terminated, with %d loops.' % self.num_loops)
 
     def additional_error_fields(self, job, queue, exception):
         """
@@ -273,7 +290,7 @@ class Worker(object):
 
         if not message:
             message = '[%s] error: %s' % (job._identifier, str(exception))
-        self.logger.error(message)
+        self.log(message, level='error')
 
     def job_success(self, job, queue, job_result, message=None):
         """
@@ -284,8 +301,8 @@ class Worker(object):
         queue.success.rpush(job.get_pk())
 
         if not message:
-            message = '[%s] success, in %ss)' % (job._identifier, job.duration)
-        self.logger.info(message)
+            message = '[%s] success, in %s' % (job._identifier, job.duration)
+        self.log(message)
 
     def job_started(self, job, queue, message=None):
         """
@@ -295,7 +312,7 @@ class Worker(object):
 
         if not message:
             message = '[%s] starting' % job._identifier
-        self.logger.info(message)
+        self.log(message)
 
     def job_skipped(self, job, queue, message=None):
         """
@@ -304,4 +321,4 @@ class Worker(object):
         if not message:
             message = '[%s] job skipped (current status: %s)' % (
                     STATUSES.by_value(job._status, 'UNKNOWN'), job._identifier)
-        self.logger.warning(message)
+        self.log(message, level='warning')

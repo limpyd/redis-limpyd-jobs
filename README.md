@@ -604,6 +604,19 @@ Returns a dictionary of fields to add to the error object.
 
 This method is called by `job_error` to let you define a dictionary of fields/values to add to the error object which will be created, if you use a subclass of the `Error` model, defined in `error_model`.
 
+##### `id`
+
+It's a property returning a string identifying the current work, used in logging to distinct log entries for each worker.
+
+##### `log`
+
+Signature:
+```python
+def log(self, message, level='info')
+```
+Returns nothing
+
+`log` is a simple wrapper around `self.logger`, which automatically add the `id` of the worker at the beginning. It can accepts a `level` argument which is `info` by default.
 ## The end.
 
 [redis-limpyd-extensions]: https://github.com/twidi/redis-limpyd-extensions
