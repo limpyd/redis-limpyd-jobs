@@ -66,7 +66,10 @@ You notice how it works:
 - `worker.run` to launch a worker.
 
 Notice that you can run as much workers as you want, even on the same queue name. Internally, we use the `blpop` redis command to get jobs atomically.
+
 But you can also run only one worker, having only one queue, doing different stuff in the callback depending on the `idenfitier` attribute of the job.
+
+And workers are able to catch SIGINT/SIGTERM signals, finishing executing the current job before exiting. Useful if used, for example, with supervisord.
 
 If you want to store more information in a job, queue ou error, or want to have a different behavior in a worker, it's easy because you can create subclasses of everything in `limpyd-jobs`, the `limpyd` models or the `Worker` class.
 
@@ -87,6 +90,7 @@ A string (`HashableField`, indexed) to identify the job.
 You can't have many jobs with the same identifier in a waiting queue. If you create a new job with an identifier while an other with the same is still in the same waiting queue, what is done depends on the priority of the two jobs:
 - if the new job has a lower (or equal) priority, it's discarded
 - if the new job has a higher priority, the priority of the existing job is updated to the higher.
+
 In both cases the `add_job` class method returns the existing job, discarding the new one.
 
 A common way of using the identifier is to, at least, store a way to identify the object on which we want the task to apply:
@@ -108,6 +112,12 @@ It's a single letter but we provide a class to help using it verbosely: `STATUSE
 ```
 
 When a job is created via the `add_job` class method, its status is set to `STATUSES.WAITING`. When it selected by the worker to execute it, the status passes to `STATUSES.RUNNING`. When finished, it's one of `STATUSES.SUCCESS` or `STATUSES.ERROR`. An other available status is `STATUSES.CANCELED`, useful if you want to cancel a job without removing it from its queue.
+
+You can also display the full string of a status:
+
+```python
+    print STATUSES.by_value(my_job.status.hget())
+```
 
 ##### `priority`
 
@@ -136,6 +146,7 @@ There is only one attribute on the `Job` model, but it is very important:
 ##### `queue_model`
 
 When adding jobs via the `add_job` method, the model defined in this attribute will be used to get or create a queue. It's set by default to `Queue` but if you want to update it to your own model, you must subclass the `Job` model too, and update this attribute.
+
 Note that if you don't subclass the `Job` model, you can pass the `queue_model` argument to the `add_job` method.
 
 #### Job properties and methods
@@ -343,11 +354,13 @@ To avoid interrupting the execution of a job, if `terminate_gracefully` is set t
 ##### `callback`
 
 The callback is the function to run when a job is fetched. By default it's the `execute` method of the worker (which, if not overridden, raises a `NotImplemented` error) , but you can pass any function that accept a job and a queue as argument.
+
 If this callback (or the `execute` method) raises an exception, the job is considered in error. In the other case, it's considered successful and the return value is passed to the `job_success` method, to let you do what you want with it.
 
 ##### `timeout`
 
 The timeout is used as parameter to the `blpop` redis command we use to fetch jobs from waiting lists. It's 30 seconds by default but you can change it any positive numbers (in seconds). You can set it to `0` if you don't want any timeout be applied to the `blpop` command. 
+
 It's better to always set a timeout, to reenter the main loop and call the `must_stop` method to see if the worker must exit.
 Note that the number of loops is not updated in this case, so a little `timeout` won't alter the number of loops defined by `max_loops`.
 
@@ -362,6 +375,7 @@ A list of keys of queues waiting lists, which are listened by the worker for new
 ##### `status`
 
 The current status of the worker. `None` by default until the `run` method is called. Then it's set to `"waiting"` while the worker waits for new jobs. When a job is fetched, the status is set to `"running"`. And finally, when the loop is over, it's set to `"terminated"`. 
+
 If the status is not `None`, the `run` method cannot be called.
 
 ##### `logger`
@@ -404,6 +418,7 @@ Signature:
 Returns nothing.
 
 It's the constructor (you know that ;) ) of the `Worker` class, excepting all arguments that can also be defined as class attributes.
+
 It validates these arguments, prepares the logging and initializes other attributes.
 
 You can override it to add, validate, initialize other arguments or attributes.
@@ -497,6 +512,7 @@ def execute(self, job, queue)
 Returns nothing by default
 
 This method is called if no `callback` argument is provided when initiating the worker. But raises a `NotImplementedError` by default. To use it (without passing the `callback` argument), you must override it in your own subclass.
+
 If the execution is successful, no return value is attended, but if any, it will be passed to the `job_success` method. And if a error occurred, an exception must be raised, which will be passed to the `job_error` method.
 
 ##### `update_keys`
@@ -509,6 +525,7 @@ def update_keys(self)
 Returns nothing
 
 Calling this method updates the internal `keys` attributes, which contains redis keys of the waiting lists of all queues listened by the worker (the ones with the same name).
+
 It's actually called at the beginning of the `run` method.
 Note that if a queue with a specific priority doesn't exist when this method is called, but later, by adding a job with `add_job`, the worker will ignore it unless this `update_keys` method was called again.
 
@@ -522,6 +539,7 @@ def run(self)
 Returns nothing
 
 It's the main method of the worker, with all the logic: while we don't have to stop, fetch a job from redis, and if this job is really in waiting state, execute it, and to something depending of the status of the execution (success, error...).
+
 In addition to the methods that do real stuff (`update_keys`, `wait_for_job`), some other methods are called during the execution: `run_started`, `run_ended`, about the run, and `job_skipped`, `job_started`, `job_success` and `job_error` about jobs. You can override these methods in subclasses to adapt the behavior depending on your needs.
 
 ##### `run_started`
@@ -556,6 +574,7 @@ def job_skipped(self, job, queue, message=None)
 Returns nothing
 
 When a job is fetched in the `run` method, its status is fetched. If this status is not `STATUSES.WAITING`, the `job_skipped` method is called, with two main arguments: the job and the queue in which it was found.
+
 The `message` argument is here only to help you override the method to only change the message computed, letting the default method doing its internal stuff which in fact is nothing else for `job_skipped` than logging this message.
 
 ##### `job_started`
@@ -568,6 +587,7 @@ def job_started(self, job, queue, message=None)
 Returns nothing
 
 When the job is fetched and its status verified (it must be `STATUSES.WAITING`), the `job_started` method is called, just before the callback (or the `execute` method if no callback is defined), with the job and the queue in which it was found.
+
 The `message` argument is here only to help you override the method to only change the message computed, letting the default method doing its internal stuff which is simply updating the `start` and `status` fields of the job, then logging the message.
 
 ##### `job_success`
@@ -581,6 +601,7 @@ def job_success(self, job, queue, job_result, message=None)
 Returns nothing
 
 When the callback (or the `execute` method) is finished, without having raised any exception, the job is considered successful, and the `job_success` method is called, with the job and the queue in which it was found, and the return value of the callback method.
+
 The `message` argument is here only to help you override the method to only change the message computed, letting the default method doing its internal stuff which is updating the `start` and `status` fields of the job, moving the job into the `success` list of the queue and then logging the message.
 
 ##### `job_error`
@@ -592,6 +613,7 @@ def job_error(self, job, queue, exception, message=None)
 Returns nothing
 
 When the callback (or the `execute` method) is terminated by raising an exception, and the `job_error` method is called, with the job and the queue in which it was found, and the raised exception.
+
 The `message` argument is here only to help you override the method to only change the message computed, letting the default method doing its internal stuff which is updating the `start` and `status` fields of the job, moving the job into the `error` list of the queue, adding a new error object (if `save_errors` is True) and then logging the message.
 
 ##### `additional_error_fields`
@@ -617,6 +639,29 @@ def log(self, message, level='info')
 Returns nothing
 
 `log` is a simple wrapper around `self.logger`, which automatically add the `id` of the worker at the beginning. It can accepts a `level` argument which is `info` by default.
+
+## Final words
+
+- you can see a full example in `example.py`
+- to use `limpyd_jobs` models on your own redis database instead of the default one (`localhost:6379:db=0`), simply use the `use_database` method of the main model:
+
+    ```python
+    from limpyd.contrib.database import PipelineDatabase
+    from limpyd_jobs.models import BaseJobsModel
+
+    database = PipelineDatabase(host='localhost', port=6379, db=15)
+    BaseJobsModel.use_database(database)
+    ```
+
+    or simply change the connection settings:
+
+    ```python
+    from limpyd_jobs.models import BaseJobsModel
+
+    BaseJobsModel.database.connect(host='localhost', port=6379, db=15)
+    ```
+
+
 ## The end.
 
 [redis-limpyd-extensions]: https://github.com/twidi/redis-limpyd-extensions
