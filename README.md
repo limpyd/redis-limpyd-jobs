@@ -640,6 +640,86 @@ Returns nothing
 
 `log` is a simple wrapper around `self.logger`, which automatically add the `id` of the worker at the beginning. It can accepts a `level` argument which is `info` by default.
 
+
+### The limpyd-worker.py script
+
+To help using `limpyd_jobs`, a executable python script is provided: `scripts/limpyd-worker.py`
+
+This script is highly configurable to help you launching workers without having to write a script or customize the one included.
+
+With this script you don't have to write a custom worker too, because all arguments attened by a worker can be passed as arguments to the script.
+
+The script is based on a `WorkerConfig` class defined in `limpyd_jobs.workers`, that you can customize by sublassing it, and you can tell the script to use your class instead of the default one.
+
+You can even pass one or many python paths to add to `sys.path`.
+
+This script is thinked to ease you as much as possible.
+
+Instead of explaining all arguments, see below the result of the `--help` command for this script:
+
+```bash
+$ scripts/limpyd-worker.py  --help
+Usage: limpyd-worker.py [options]
+
+Run a worker using redis-limpyd-jobs
+
+Options:
+  --pythonpath=PYTHONPATH
+                        A directory to add to the Python path, e.g.
+                        --pythonpath=/my/module
+  --worker-config=WORKER_CONFIG
+                        The worker config class to use, e.g. --worker-
+                        config=my.module.MyWorkerConfig, default to
+                        limpyd_jobs.workers.WorkerConfig
+  --print-options       Print options as parsed by the script, e.g. --print-
+                        options
+  --dry-run             Won't execute any job, just starts the worker and
+                        finish it immediatly, e.g. --dry-run
+  --name=NAME           Name of the Queues to handle e.g. --name=my-queue-name
+  --job-model=JOB_MODEL
+                        Name of the Job model to use, e.g. --job-
+                        model=my.module.JobModel
+  --queue-model=QUEUE_MODEL
+                        Name of the Queue model to use, e.g. --queue-
+                        model=my.module.QueueModel
+  --errro-model=ERROR_MODEL
+                        Name of the Error model to use, e.g. --queue-
+                        model=my.module.ErrorModel
+  --worker-class=WORKER_CLASS
+                        Name of the Worker class to use, e.g. --worker-
+                        class=my.module.WorkerClass
+  --callback=CALLBACK   The callback to call for each job, e.g. --worker-
+                        class=my.module.callback
+  --logger-base-name=LOGGER_BASE_NAME
+                        The base name to use for logging, e.g. --logger-base-
+                        name="limpyd-jobs.%s"
+  --logger-level=LOGGER_LEVEL
+                        The level to use for logging, e.g. --worker-class=INFO
+  --save-errors         Save job errors in the Error model, e.g. --save-errors
+  --no-save-errors      Do not save job errors in the Error model, e.g. --no-
+                        save-errors
+  --max-loops=MAX_LOOPS
+                        Max number of jobs to run, e.g. --max-loops=100
+  --terminate-gracefuly
+                        Intercept SIGTERM and SIGINT signals to stop
+                        gracefuly, e.g. --terminate-gracefuly
+  --no-terminate-gracefuly
+                        Do NOT intercept SIGTERM and SIGINT signals, so don't
+                        stop gracefuly, e.g. --no-terminate-gracefuly
+  --timeout=TIMEOUT     Max delay (seconds) to wait for a redis BLPOP call (0
+                        for no timeout), e.g. --timeout=30
+  --version             show program's version number and exit
+  -h, --help            show this help message and exit
+```
+
+Except for `--pythonpath`, `--worker-config`, `--print-options`,`--dry-run` and `--worker-class` all options will be passed to the worker.
+
+So, if you use the default models, the default worker with its default options,to launch a worker to work on the queue `queue-name`, all you need to do is:
+
+```
+scripts/limpyd-worder.py --name=queue-name
+```
+
 ## Final words
 
 - you can see a full example in `example.py`
