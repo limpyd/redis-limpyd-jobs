@@ -338,8 +338,11 @@ class WorkerConfig(object):
     help = "Run a worker using redis-limpyd-jobs"
 
     option_list = (
-        make_option('--pythonpath',
+        make_option('--pythonpath', action='append',
             help='A directory to add to the Python path, e.g. --pythonpath=/my/module'),
+        make_option('--worker-config', dest='worker_config',
+            help='The worker config class to use, e.g. --worker-config=my.module.MyWorkerConfig, '
+                  'default to limpyd_jobs.workers.WorkerConfig'),
         make_option('--print-options', action='store_true', dest='print_options',
             help='Print options as parsed by the script, e.g. --print-options'),
         make_option('--dry-run', action='store_true', dest='dry_run',
@@ -400,10 +403,9 @@ class WorkerConfig(object):
         return __import__(module_uri, {}, {}, [''])
 
     @staticmethod
-    def import_module(module_uri):
-        """ Import module by string 'from.path.module'
-
-        To support python 2.6
+    def import_class(class_uri):
+        """
+        Import a class by string 'from.path.module.class'
         """
         try:
             from importlib import import_module
@@ -411,7 +413,13 @@ class WorkerConfig(object):
         except ImportError:
             callback = WorkerConfig._import_module
 
-        return callback(module_uri)
+        parts = class_uri.split('.')
+        class_name = parts.pop()
+        module_uri = '.'.join(parts)
+
+        module = callback(module_uri)
+
+        return getattr(module, class_name)
 
     def __init__(self, argv=None):
         """
@@ -524,6 +532,10 @@ class WorkerConfig(object):
         Print all options as parsed by the script
         """
         options = []
+
+        if self.__class__ != WorkerConfig:
+            options.append(("worker_config", '%s.%s' % (self.__class__.__module__,
+                                                        self.__class__.__name__)))
 
         if self.options.dry_run:
             options.append(("dry_run", self.options.dry_run))
