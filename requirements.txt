@@ -1,2 +1,3 @@
 redis-limpyd
 redis-limpyd-extensions
+setproctitle

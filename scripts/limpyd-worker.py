@@ -104,7 +104,7 @@ if __name__ == '__main__':
     parser = LaxOptionParser(usage="%prog [options]", option_list=option_list)
     options, args = parser.parse_args(sys.argv[:])
 
-    # if you have some pythonpaths, add them
+    # if we have some pythonpaths, add them
     if options.pythonpath:
         sys.path[0:0] = parser.parse_python_paths(sys.argv[:])
 

@@ -5,6 +5,8 @@ import os.path
 from datetime import datetime
 from optparse import make_option, OptionParser
 
+from setproctitle import setproctitle
+
 from limpyd import __version__ as limpyd_version
 from limpyd.exceptions import ImplementationError, DoesNotExist
 
@@ -88,6 +90,7 @@ class Worker(object):
         self.end_forced = False  # set it to True in "execute" to force stop just after
         self.status = None  # is set to None/waiting/running by the worker
         self.end_signal_caught = False  # internaly set to True if end signal caught
+        self.update_callbacks = []  # callbacks to call when status is updated
 
     @staticmethod
     def _assert_correct_model(model_to_check, model_reference, obj_name):
@@ -143,6 +146,26 @@ class Worker(object):
         return self.terminate_gracefuly and self.end_signal_caught \
             or self.num_loops >= self.max_loops or self.end_forced
 
+    def set_status(self, status):
+        """
+        Save the new status and call all defined callbacks
+        """
+        self.status = status
+        for callback in self.update_callbacks:
+            callback(self)
+
+    def add_update_callback(self, callback):
+        """
+        Add a callback to call when the status is updated
+        """
+        self.update_callbacks.append(callback)
+
+    def remove_update_callback(self, callback):
+        """
+        Remove a callback from ones set to be called when the status is updated
+        """
+        self.update_callbacks.remove(callback)
+
     def wait_for_job(self):
         """
         Use a redis blocking list call to wait for a job, and return it.
@@ -151,7 +174,7 @@ class Worker(object):
         if blpop_result is None:
             return None
         queue_redis_key, job_pk = blpop_result
-        self.status = 'running'
+        self.set_status('running')
         return self.get_queue(queue_redis_key), self.get_job(job_pk)
 
     def get_job(self, job_pk):
@@ -202,6 +225,12 @@ class Worker(object):
         """
         self.keys = self.queue_model.get_keys(self.name)
 
+    def count_waiting_jobs(self):
+        """
+        Return the number of all jobs waiting in queues managed by the worker
+        """
+        return self.queue_model.count_jobs(self.name)
+
     def run_started(self):
         """
         Called just before starting to wait for jobs. Actually only do logging.
@@ -216,19 +245,21 @@ class Worker(object):
         """
         # if status is not None, we already had a run !
         if self.status:
-            self.status = 'aborted'
+            self.set_status('aborted')
             raise ImplementationError('This worker run is already terminated')
+
+        self.set_status('starting')
 
         self.update_keys()
         if not self.keys:
             self.log('No queues with the name %s.' % self.name, level='error')
-            self.status = 'aborted'
+            self.set_status('aborted')
             return
 
         self.run_started()
 
         while not self.must_stop():
-            self.status = 'waiting'
+            self.set_status('waiting')
             try:
                 queue_and_job = self.wait_for_job()
                 if queue_and_job is None:
@@ -241,7 +272,7 @@ class Worker(object):
                 self.num_loops += 1
                 identifier = 'pk:%s' % job.get_pk()  # default if failure
                 try:
-                    self.status = 'running'
+                    self.set_status('running')
                     identifier, status = job.hmget('identifier', 'status')
                      # some cache, don't count on it on subclasses
                     job._identifier = identifier
@@ -261,7 +292,7 @@ class Worker(object):
                     self.log('[%s] unexpected error: %s' % (identifier, str(e)),
                              level='error')
 
-        self.status = 'terminated'
+        self.set_status('terminated')
         self.run_ended()
 
     def run_ended(self):
@@ -384,6 +415,9 @@ class WorkerConfig(object):
 
         make_option('--timeout', type='int', dest='timeout',
             help='Max delay (seconds) to wait for a redis BLPOP call (0 for no timeout), e.g. --timeout=30'),
+
+        make_option('--no-title', action='store_false', dest='update_title', default=True,
+            help="Do not update the title of the worker's process, e.g. --no-title"),
     )
 
     default_classes = {
@@ -428,6 +462,7 @@ class WorkerConfig(object):
         self.argv = argv or sys.argv[:]
         self.prog_name = os.path.basename(self.argv[0])
         self.manage_options()
+        self.update_proc_title()
 
     def get_version(self):
         """
@@ -505,6 +540,8 @@ class WorkerConfig(object):
         if self.timeout is not None and self.timeout < 0:
             self.parser.error('The timeout argument (%s) must be a positive integer (including 0)' % self.options.timeout)
 
+        self.update_title = self.options.update_title
+
     def do_import(self, name):
         """
         Import the given option (use default values if not defined on command line)
@@ -581,6 +618,9 @@ class WorkerConfig(object):
         """
         worker_options = self.prepare_worker_options()
         self.worker = self.worker_class(**worker_options)
+        if self.update_title:
+            self.worker.add_update_callback(self.update_proc_title)
+            self.update_proc_title()
 
         if not self.worker.logger.handlers:
             handler = logging.StreamHandler()
@@ -595,3 +635,38 @@ class WorkerConfig(object):
         Simply run the worker by calling its "run" method
         """
         self.worker.run()
+
+    def get_proc_title(self):
+        """
+        Create the title for the current process (set by `update_proc_title`)
+        """
+        has_worker = bool(getattr(self, 'worker', None))
+
+        title_parts = [self.prog_name.replace('.py', ('#%s' % self.worker.id) if has_worker else '')]
+
+        status = 'init'
+        if has_worker and self.worker.status:
+            status = self.worker.status
+            if self.worker.end_forced:
+                status += ' - ending'
+        title_parts.append('[%s]' % status)
+
+        if has_worker and self.worker.name:
+            title_parts.append('queue=%s' % self.worker.name)
+
+        if has_worker and self.worker.status:
+            # add infos about the main loop
+            title_parts.append('loop=%s/%s' % (self.worker.num_loops, self.worker.max_loops))
+
+            # and about the number of jobs to run
+            title_parts.append('waiting-jobs=%s' % self.worker.count_waiting_jobs())
+
+        return ' '.join(title_parts)
+
+    def update_proc_title(self, worker=None):
+        """
+        Update the title of the process with useful informations
+        """
+        if not self.update_title:
+            return
+        setproctitle(self.get_proc_title())

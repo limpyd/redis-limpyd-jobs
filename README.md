@@ -708,17 +708,31 @@ Options:
                         stop gracefuly, e.g. --no-terminate-gracefuly
   --timeout=TIMEOUT     Max delay (seconds) to wait for a redis BLPOP call (0
                         for no timeout), e.g. --timeout=30
+  --no-title            Do not update the title of the worker's process, e.g.
+                        --no-title
   --version             show program's version number and exit
   -h, --help            show this help message and exit
 ```
 
-Except for `--pythonpath`, `--worker-config`, `--print-options`,`--dry-run` and `--worker-class` all options will be passed to the worker.
+Except for `--pythonpath`, `--worker-config`, `--print-options`,`--dry-run`, `--worker-class` and `--no-title`, all options will be passed to the worker.
 
 So, if you use the default models, the default worker with its default options,to launch a worker to work on the queue `queue-name`, all you need to do is:
 
 ```
 scripts/limpyd-worder.py --name=queue-name
 ```
+
+We use the `setproctitle` module to display useful informations in the process name, to have stuff like this:
+
+```
+limpyd-worker#1566090 [init] queue=foo
+limpyd-worker#1566090 [starting] queue=foo loop=0/1000 waiting-jobs=10
+limpyd-worker#1566090 [running] queue=foo loop=1/1000 waiting-jobs=9
+limpyd-worker#1566090 [terminated] queue=foo loop=10/1000 waiting-jobs=0
+```
+
+You can disable it by passing the `--no-title` argument.
+
 
 ## Final words
 
