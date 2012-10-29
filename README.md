@@ -708,6 +708,8 @@ Options:
                         stop gracefuly, e.g. --no-terminate-gracefuly
   --timeout=TIMEOUT     Max delay (seconds) to wait for a redis BLPOP call (0
                         for no timeout), e.g. --timeout=30
+  --database=DATABASE   Redis database to use (host:port:db), e.g.
+                        --database=localhost:6379:15
   --no-title            Do not update the title of the worker's process, e.g.
                         --no-title
   --version             show program's version number and exit

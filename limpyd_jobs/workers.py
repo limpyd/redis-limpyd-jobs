@@ -416,6 +416,9 @@ class WorkerConfig(object):
         make_option('--timeout', type='int', dest='timeout',
             help='Max delay (seconds) to wait for a redis BLPOP call (0 for no timeout), e.g. --timeout=30'),
 
+        make_option('--database', action='store', dest='database',
+            help='Redis database to use (host:port:db), e.g. --database=localhost:6379:15'),
+
         make_option('--no-title', action='store_false', dest='update_title', default=True,
             help="Do not update the title of the worker's process, e.g. --no-title"),
     )
@@ -540,6 +543,11 @@ class WorkerConfig(object):
         if self.timeout is not None and self.timeout < 0:
             self.parser.error('The timeout argument (%s) must be a positive integer (including 0)' % self.options.timeout)
 
+        self.database_config = None
+        if self.options.database:
+            host, port, db = self.options.database.split(':')
+            self.database_config = dict(host=host, port=int(port), db=int(db))
+
         self.update_title = self.options.update_title
 
     def do_import(self, name):
@@ -574,6 +582,11 @@ class WorkerConfig(object):
             options.append(("worker_config", '%s.%s' % (self.__class__.__module__,
                                                         self.__class__.__name__)))
 
+        if self.database_config:
+            options.append(("database", '%s:%s:%s' % (self.database_config['host'],
+                                                      self.database_config['port'],
+                                                      self.database_config['db'])))
+
         if self.options.dry_run:
             options.append(("dry_run", self.options.dry_run))
 
@@ -597,8 +610,17 @@ class WorkerConfig(object):
         """
         if self.options.print_options:
             self.print_options()
+        self.prepare_models()
         self.prepare_worker()
         self.run()
+
+    def prepare_models(self):
+        """
+        If a database config ws given as argument, apply it to our models
+        """
+        if self.database_config:
+            for model in (self.job_model, self.queue_model, self.error_model):
+                model.database.connect(**self.database_config)
 
     def prepare_worker_options(self):
         """
