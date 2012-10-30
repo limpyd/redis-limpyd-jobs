@@ -227,7 +227,7 @@ The `Queue` model has no specific properties or method.
 
 #### Queue class methods
 
-The `Queue` model provides two class methods:
+The `Queue` model provides a few class methods:
 
 ##### `get_queue`
 
@@ -247,6 +247,15 @@ If you use a subclass of the `Queue` model, you can pass additional arguments to
 
 The `get_keys` class method returns all the existing queue with a given name, sorted by priority (reverse order: the highest priorities come first).
 The returned value is a list of redis keys for each `waiting` lists of matching queues. It's used internally by the workers as argument to the `blpop` redis command.
+
+##### `count_waiting_jobs`
+
+The `count_waiting_jobs` class method returns the number of jobs still waiting for a given queue name, combining all priorities.
+
+Arguments:
+
+- name
+    The name of the queues to take into accounts
 
 ### Error
 
@@ -639,6 +648,43 @@ def log(self, message, level='info')
 Returns nothing
 
 `log` is a simple wrapper around `self.logger`, which automatically add the `id` of the worker at the beginning. It can accepts a `level` argument which is `info` by default.
+
+##### `set_status`
+
+Signature:
+```python
+def set_status(self, status)
+```
+Returns nothing
+
+`set_status` simply update the worker's status and then call all callbacks added by `add_update_callback`.
+
+##### `add_update_callback`
+
+Signature:
+```python
+def add_update_callback(self, callback)
+```
+
+`add_update_callback` add a callback to execute when `set_status` is called.
+
+##### ``
+
+Signature:
+```python
+def remove_update_callback(self, callback)
+```
+
+`remove_update_callback` remove a callback previously added by `add_update_callback`.
+
+##### `count_waiting_jobs`
+
+Signature:
+```python
+def count_waiting_jobs(self)
+```
+
+`count_waiting_jobs` returns the number of jobs in waiting state that can be run by this worker.
 
 
 ### The limpyd-worker.py script

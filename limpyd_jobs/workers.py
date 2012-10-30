@@ -229,7 +229,7 @@ class Worker(object):
         """
         Return the number of all jobs waiting in queues managed by the worker
         """
-        return self.queue_model.count_jobs(self.name)
+        return self.queue_model.count_waiting_jobs(self.name)
 
     def run_started(self):
         """

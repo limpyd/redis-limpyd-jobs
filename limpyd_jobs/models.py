@@ -58,7 +58,7 @@ class Queue(BaseJobsModel):
         return [col.waiting.key for col in collection.instances()]
 
     @classmethod
-    def count_jobs(cls, name):
+    def count_waiting_jobs(cls, name):
         """
         Return the number of all jobs waiting in queues with the given name
         """
