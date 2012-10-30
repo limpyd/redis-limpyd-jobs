@@ -144,6 +144,22 @@ class JobsTests(LimpydBaseTest):
         # idem for job2 (which is, in fact, job1)
         self.assert_job_status_and_priority(job2, STATUSES.WAITING, '2')
 
+    def test_prepending_an_existing_job_should_move_it_at_the_beginning(self):
+        queue = Queue.get_queue(name='test', priority=1)
+
+        job1 = Job.add_job(identifier='job:1', queue_name='test', priority=1)
+        job2 = Job.add_job(identifier='job:2', queue_name='test', priority=1)
+        self.assertEqual(queue.waiting.lmembers(), [job1.get_pk(), job2.get_pk()])
+
+        Job.add_job(identifier='job:2', queue_name='test', priority=1, prepend=True)
+        self.assertEqual(queue.waiting.lmembers(), [job2.get_pk(), job1.get_pk()])
+
+    def test_prepending_a_new_job_should_add_it_at_the_beginning(self):
+        job1 = Job.add_job(identifier='job:1', queue_name='test', priority=1)
+        job2 = Job.add_job(identifier='job:2', queue_name='test', priority=1, prepend=True)
+        queue = Queue.get_queue(name='test', priority=1)
+        self.assertEqual(queue.waiting.lmembers(), [job2.get_pk(), job1.get_pk()])
+
     def test_duration_should_compute_end_start_difference(self):
         start = datetime.utcnow()
         job = Job.add_job(identifier='job:1', queue_name='test', priority=1)

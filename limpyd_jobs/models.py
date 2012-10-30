@@ -68,7 +68,7 @@ class Job(BaseJobsModel):
     queue_model = Queue
 
     @classmethod
-    def add_job(cls, identifier, queue_name, priority=0, queue_model=None, **fields_if_new):
+    def add_job(cls, identifier, queue_name, priority=0, queue_model=None, prepend=False, **fields_if_new):
         """
         Add a job to a queue.
         If this job already exists, check it's current priority. If its higher
@@ -86,14 +86,16 @@ class Job(BaseJobsModel):
         # create the job or get an existing one
         job, created = cls.get_or_connect(identifier=identifier, status=STATUSES.WAITING)
 
-        # if the job already exists, and we want a higher priority, update it
+        # if the job already exists, and we want a higher priority or move it,
+        # start by updating it
         if not created:
             current_priority = int(job.priority.hget() or 0)
-            # if the job has a higher priority, don't move it
-            if current_priority >= priority:
+            # if the job has a higher priority, or don't need to be moved,
+            # don't move it
+            if not prepend and current_priority >= priority:
                 return job
 
-            # cancel it temporarily, we'll set is as waiting later
+            # cancel it temporarily, we'll set it as waiting later
             job.status.hset(STATUSES.CANCELED)
 
             # remove it from the current queue, we'll add it to the new one later
@@ -109,7 +111,8 @@ class Job(BaseJobsModel):
         job.hmset(status=STATUSES.WAITING, priority=priority)
 
         # and add it to the new queue
-        queue.waiting.rpush(job.get_pk())
+        push_method = getattr(queue.waiting, 'lpush' if prepend else 'rpush')
+        push_method(job.get_pk())
 
         return job
 

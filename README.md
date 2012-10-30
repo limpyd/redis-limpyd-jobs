@@ -177,7 +177,10 @@ Arguments:
     The priority of the new job, or the new priority of an already existing job, if this priority is higher of the existing one.
 
 - `queue_model`
-    The to use to store queues. By default, it's set to `Queue`, defined in the `queue_model` attribute of the `Job` model. If the argument is not set, the attribute will be used. Be careful to set it as attribute in your subclass, or as argument in `add_job` or the default `Queue` model will be used and jobs won't be saved in the expected queue.
+    The model to use to store queues. By default, it's set to `Queue`, defined in the `queue_model` attribute of the `Job` model. If the argument is not set, the attribute will be used. Be careful to set it as attribute in your subclass, or as argument in `add_job` or the default `Queue` model will be used and jobs won't be saved in the expected queue.
+
+- `prepend=False`
+    If by default, all new jobs are added at the end of the waiting list (and taken from the start, it's a fifo list), but you can force jobs to be added at the beginning of the waiting list to be the first to be executed, simply by setting the `prepend` argument to True. If the job already exists, it will be moved at the beginning of the list.
     
 
 If you use a subclass of the `Job` model, you can pass additional arguments to the `add_job` method simply by passing them as named arguments, they will be save if a new job is created (but not if an existing job is found in a waiting queue)
