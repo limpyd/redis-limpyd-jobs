@@ -369,11 +369,14 @@ class WorkerConfig(object):
     help = "Run a worker using redis-limpyd-jobs"
 
     option_list = (
+        # pythonpath and worker-config are managed in the script, here just to
+        # not throw error if found on command line but not in defined options
         make_option('--pythonpath', action='append',
             help='A directory to add to the Python path, e.g. --pythonpath=/my/module'),
         make_option('--worker-config', dest='worker_config',
             help='The worker config class to use, e.g. --worker-config=my.module.MyWorkerConfig, '
                   'default to limpyd_jobs.workers.WorkerConfig'),
+
         make_option('--print-options', action='store_true', dest='print_options',
             help='Print options as parsed by the script, e.g. --print-options'),
         make_option('--dry-run', action='store_true', dest='dry_run',
@@ -386,7 +389,7 @@ class WorkerConfig(object):
             help='Name of the Job model to use, e.g. --job-model=my.module.JobModel'),
         make_option('--queue-model', action='store', dest='queue_model',
             help='Name of the Queue model to use, e.g. --queue-model=my.module.QueueModel'),
-        make_option('--errro-model', action='store', dest='error_model',
+        make_option('--error-model', action='store', dest='error_model',
             help='Name of the Error model to use, e.g. --queue-model=my.module.ErrorModel'),
 
         make_option('--worker-class', action='store', dest='worker_class',
@@ -454,7 +457,11 @@ class WorkerConfig(object):
         class_name = parts.pop()
         module_uri = '.'.join(parts)
 
-        module = callback(module_uri)
+        try:
+            module = callback(module_uri)
+        except ImportError:
+            # maybe we are still in a module, test going up one level
+            module = WorkerConfig.import_class(module_uri)
 
         return getattr(module, class_name)
 
@@ -465,6 +472,8 @@ class WorkerConfig(object):
         self.argv = argv or sys.argv[:]
         self.prog_name = os.path.basename(self.argv[0])
         self.manage_options()
+        if self.options.print_options:
+            self.print_options()
         self.update_proc_title()
 
     def get_version(self):
@@ -476,15 +485,11 @@ class WorkerConfig(object):
 
     def usage(self):
         """
-        Return a brief description of how to use the worker, by
-        default from the attribute ``self.help``.
+        Return a brief description of how to use the worker based on self.help
 
         """
         usage = '%prog [options]'
-        if self.help:
-            return '%s\n\n%s' % (usage, self.help)
-        else:
-            return usage
+        return '%s\n\n%s' % (usage, self.help)
 
     def create_parser(self):
         """
@@ -507,40 +512,28 @@ class WorkerConfig(object):
 
         if self.argv[1:] in (['--help'], ['-h'], ['--version']):
             # OptionParser already takes care of printing help and version.
+            # We should never pass here
             return True
-
-        if self.options.pythonpath:
-            sys.path.insert(0, self.options.pythonpath)
 
         self.do_imports()
 
-        if self.callback and not callable(self.callback):
-            self.parser.error('The callback "%s" is not callable' % self.options.callback)
-
-        self.name = self.options.name
-
-        self.logger_base_name = self.options.logger_base_name
+        if self.options.callback and not callable(self.options.callback):
+            self.parser.error('The callback is not callable')
 
         self.logger_level = None
         if self.options.logger_level:
             if self.options.logger_level.isdigit():
-                self.logger_level = int(self.options.logger_level)
+                self.options.logger_level = int(self.options.logger_level)
             else:
                 try:
-                    self.logger_level = getattr(logging, self.options.logger_level.upper())
+                    self.options.logger_level = getattr(logging, self.options.logger_level.upper())
                 except:
                     self.parser.error('Invalid logger-level %s' % self.options.logger_level)
 
-        self.save_errors = self.options.save_errors
-
-        self.max_loops = self.options.max_loops
-        if self.max_loops is not None and self.max_loops < 0:
+        if self.options.max_loops is not None and self.options.max_loops < 0:
             self.parser.error('The max-loops argument (%s) must be a positive integer' % self.options.max_loops)
 
-        self.terminate_gracefuly = self.options.terminate_gracefuly
-
-        self.timeout = self.options.timeout
-        if self.timeout is not None and self.timeout < 0:
+        if self.options.timeout is not None and self.options.timeout < 0:
             self.parser.error('The timeout argument (%s) must be a positive integer (including 0)' % self.options.timeout)
 
         self.database_config = None
@@ -556,21 +549,20 @@ class WorkerConfig(object):
         """
         option = getattr(self.options, name)
         if option:
-            parts = option.split('.')
-            class_name = parts.pop()
-            module_uri = '.'.join(parts)
-            module = WorkerConfig.import_module(module_uri)
-            klass = getattr(module, class_name)
+            klass = WorkerConfig.import_class(option)
         else:
             klass = self.default_classes[name]
-        setattr(self, name, klass)
+        setattr(self.options, name, klass)
 
     def do_imports(self):
         """
         Import all importable options
         """
         for option in self.default_classes.keys():
-            self.do_import(option)
+            try:
+                self.do_import(option)
+            except Exception, e:
+                self.parser.error('Unable to import "%s": %s' % (option, e))
 
     def print_options(self):
         """
@@ -593,11 +585,10 @@ class WorkerConfig(object):
         for option_name in self.worker_options:
             option = getattr(self.options, option_name)
             if option is not None:
-                value = getattr(self, option_name)
-                options.append((option_name.replace('_', '-'), value))
+                options.append((option_name.replace('_', '-'), option))
             # special case for worker_class which is not a worker option
             if option_name == 'error_model' and self.options.worker_class is not None:
-                options.append(("worker-class", self.worker_class))
+                options.append(("worker-class", self.options.worker_class))
 
         if options:
             print "The worker will run with the following options:"
@@ -608,8 +599,6 @@ class WorkerConfig(object):
         """
         Main method to call to run the worker
         """
-        if self.options.print_options:
-            self.print_options()
         self.prepare_models()
         self.prepare_worker()
         self.run()
@@ -619,7 +608,8 @@ class WorkerConfig(object):
         If a database config ws given as argument, apply it to our models
         """
         if self.database_config:
-            for model in (self.job_model, self.queue_model, self.error_model):
+            for model in (self.options.job_model, self.options.queue_model,
+                                                    self.options.error_model):
                 model.database.connect(**self.database_config)
 
     def prepare_worker_options(self):
@@ -639,7 +629,7 @@ class WorkerConfig(object):
         log handler if none, and manage dry_run options
         """
         worker_options = self.prepare_worker_options()
-        self.worker = self.worker_class(**worker_options)
+        self.worker = self.options.worker_class(**worker_options)
         if self.update_title:
             self.worker.add_update_callback(self.update_proc_title)
             self.update_proc_title()

@@ -1,5 +1,7 @@
 import unittest
 import sys
+from StringIO import StringIO
+from unittest.case import _AssertRaisesContext
 
 from limpyd import DEFAULT_CONNECTION_SETTINGS, TEST_CONNECTION_SETTINGS
 from limpyd.contrib.database import PipelineDatabase
@@ -60,6 +62,13 @@ class LimpydBaseTest(unittest.TestCase):
         else:
             context.__exit__(*sys.exc_info())
 
+    def assertSystemExit(self, in_stderr=None, in_stdout=None):
+        """
+        A context to wrap to assertRaises(SystemExit) which can also test (via
+        assertIn) the content of stderr and stdout
+        """
+        return _AssertSystemExit(self, in_stderr, in_stdout)
+
 
 class _AssertNumCommandsContext(object):
     """
@@ -87,6 +96,48 @@ class _AssertNumCommandsContext(object):
                 executed, self.num
             )
         )
+
+
+class _AssertSystemExit(_AssertRaisesContext):
+    """
+    A context to wrap to assertRaises(SystemExit) which can also test (via
+    assertIn) the content of stderr and stdout
+    """
+    def __init__(self, test_case, in_stderr=None, in_stdout=None):
+        super(_AssertSystemExit, self).__init__(SystemExit, test_case)
+        self.test_case = test_case
+        self.in_stderr = in_stderr
+        self.in_stdout = in_stdout
+
+    def __enter__(self):
+        if self.in_stderr is not None:
+            self.old_stderr = sys.stderr
+            sys.stderr = self.stderr = StringIO()
+
+        if self.in_stdout is not None:
+            self.old_stdout = sys.stdout
+            sys.stdout = self.stdout = StringIO()
+
+        super(_AssertSystemExit, self).__enter__()
+
+    def __exit__(self, exc_type, exc_value, tb):
+        if self.in_stderr is not None:
+            sys.stderr = self.old_stderr
+
+        if self.in_stdout is not None:
+            sys.stdout = self.old_stdout
+
+        result = super(_AssertSystemExit, self).__exit__(exc_type, exc_value, tb)
+        if not result:
+            return result
+
+        if self.in_stderr is not None:
+            self.test_case.assertIn(self.in_stderr, self.stderr.getvalue())
+
+        if self.in_stdout is not None:
+            self.test_case.assertIn(self.in_stdout, self.stdout.getvalue())
+
+        return True
 
 
 class LimpydBaseTestTest(LimpydBaseTest):
