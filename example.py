@@ -14,7 +14,7 @@ import threading
 import logging
 
 from limpyd_jobs import STATUSES
-from limpyd_jobs.models import Queue, Job
+from limpyd_jobs.models import Queue, Job, Error
 from limpyd_jobs.workers import Worker, logger
 from limpyd import model, fields
 from limpyd.contrib.database import PipelineDatabase
@@ -30,24 +30,29 @@ database = PipelineDatabase(host='localhost', port=6379, db=15)
 QUEUE_NAME = 'update_fullname'
 
 
-class MyQueue(Queue):
+class ModelConfigMixin(object):
     """
-    A queue that will store the dates of it's first and last successful job
+    A simple mixin to use with all our models, defining one for all the
+    database and namespace to use.
     """
     database = database
     namespace = 'limpyd-jobs-example'
+
+
+class MyQueue(ModelConfigMixin, Queue):
+    """
+    A queue that will store the dates of it's first and last successful job
+    """
     first_job_date = fields.HashableField()
     last_job_date = fields.HashableField()
     jobs_counter = fields.HashableField()
 
 
-class MyJob(Job):
+class MyJob(ModelConfigMixin, Job):
     """
     A job that will use Person's PK as identifier, and will store results of
     callback in a new field
     """
-    database = database
-    namespace = 'limpyd-jobs-example'
     result = fields.StringField()  # to store the result of the task
     queue_model = MyQueue
     start = fields.HashableField(indexable=True)
@@ -59,14 +64,19 @@ class MyJob(Job):
         return Person.get(self.identifier.hget())
 
 
-class Person(model.RedisModel):
+class MyError(ModelConfigMixin, Error):
+    """
+    The default Error model, but on our namespace and database
+    """
+    pass
+
+
+class Person(ModelConfigMixin, model.RedisModel):
     """
     A simple model for which we want to compute fullname based on firstname and
     lastname
     """
-    database = database
     cacheable = False
-    namespace = 'limpyd-jobs-example'
 
     firstname = fields.HashableField()
     lastname = fields.HashableField()
@@ -84,6 +94,7 @@ class FullNameWorker(Worker):
     # we use our own models
     queue_model = MyQueue
     job_model = MyJob
+    error_model = MyError
 
     # useful logging level
     logger_level = logging.INFO
@@ -177,13 +188,18 @@ class WorkerThread(threading.Thread):
         workers.append(worker)
         worker.run()
 
-# some clean
-for queue in MyQueue.collection().instances():
-    queue.delete()
-for job in MyJob.collection().instances():
-    job.delete()
-for person in Person.collection().instances():
-    person.delete()
+
+def clean():
+    """
+    Clean data created by this script
+    """
+    for queue in MyQueue.collection().instances():
+        queue.delete()
+    for job in MyJob.collection().instances():
+        job.delete()
+    for person in Person.collection().instances():
+        person.delete()
+clean()
 
 # create some persons
 for name in ("Chandler Bing", "Rachel Green", "Ross Geller", "Joey Tribbiani",
@@ -248,3 +264,6 @@ for queue in MyQueue.collection().sort(by='priority').instances():
     if queue.waiting.llen():
         waiting_part = ' Still waiting: %s' % queue.waiting.lmembers()
     print '\t[%s] (priority: %s).%s%s' % (name, priority, success_part, waiting_part)
+
+# final clean
+clean()
