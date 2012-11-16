@@ -1,7 +1,13 @@
 import logging
 import signal
+import sys
+import os.path
 from datetime import datetime
+from optparse import make_option, OptionParser
 
+from setproctitle import setproctitle
+
+from limpyd import __version__ as limpyd_version
 from limpyd.exceptions import ImplementationError, DoesNotExist
 
 from limpyd_jobs import STATUSES
@@ -84,6 +90,7 @@ class Worker(object):
         self.end_forced = False  # set it to True in "execute" to force stop just after
         self.status = None  # is set to None/waiting/running by the worker
         self.end_signal_caught = False  # internaly set to True if end signal caught
+        self.update_callbacks = []  # callbacks to call when status is updated
 
     @staticmethod
     def _assert_correct_model(model_to_check, model_reference, obj_name):
@@ -139,6 +146,26 @@ class Worker(object):
         return self.terminate_gracefuly and self.end_signal_caught \
             or self.num_loops >= self.max_loops or self.end_forced
 
+    def set_status(self, status):
+        """
+        Save the new status and call all defined callbacks
+        """
+        self.status = status
+        for callback in self.update_callbacks:
+            callback(self)
+
+    def add_update_callback(self, callback):
+        """
+        Add a callback to call when the status is updated
+        """
+        self.update_callbacks.append(callback)
+
+    def remove_update_callback(self, callback):
+        """
+        Remove a callback from ones set to be called when the status is updated
+        """
+        self.update_callbacks.remove(callback)
+
     def wait_for_job(self):
         """
         Use a redis blocking list call to wait for a job, and return it.
@@ -147,7 +174,7 @@ class Worker(object):
         if blpop_result is None:
             return None
         queue_redis_key, job_pk = blpop_result
-        self.status = 'running'
+        self.set_status('running')
         return self.get_queue(queue_redis_key), self.get_job(job_pk)
 
     def get_job(self, job_pk):
@@ -197,9 +224,12 @@ class Worker(object):
         Update the redis keys to listen for new jobs.
         """
         self.keys = self.queue_model.get_keys(self.name)
-        if not self.keys:
-            self.log('No queues with the name %s.' % self.name, level='error')
-            self.end_forced = True
+
+    def count_waiting_jobs(self):
+        """
+        Return the number of all jobs waiting in queues managed by the worker
+        """
+        return self.queue_model.count_waiting_jobs(self.name)
 
     def run_started(self):
         """
@@ -215,18 +245,21 @@ class Worker(object):
         """
         # if status is not None, we already had a run !
         if self.status:
-            self.status = 'aborted'
+            self.set_status('aborted')
             raise ImplementationError('This worker run is already terminated')
 
+        self.set_status('starting')
+
         self.update_keys()
-        if self.end_forced:
-            self.status = 'aborted'
+        if not self.keys:
+            self.log('No queues with the name %s.' % self.name, level='error')
+            self.set_status('aborted')
             return
 
         self.run_started()
 
         while not self.must_stop():
-            self.status = 'waiting'
+            self.set_status('waiting')
             try:
                 queue_and_job = self.wait_for_job()
                 if queue_and_job is None:
@@ -239,7 +272,7 @@ class Worker(object):
                 self.num_loops += 1
                 identifier = 'pk:%s' % job.get_pk()  # default if failure
                 try:
-                    self.status = 'running'
+                    self.set_status('running')
                     identifier, status = job.hmget('identifier', 'status')
                      # some cache, don't count on it on subclasses
                     job._identifier = identifier
@@ -259,7 +292,7 @@ class Worker(object):
                     self.log('[%s] unexpected error: %s' % (identifier, str(e)),
                              level='error')
 
-        self.status = 'terminated'
+        self.set_status('terminated')
         self.run_ended()
 
     def run_ended(self):
@@ -322,3 +355,330 @@ class Worker(object):
             message = '[%s] job skipped (current status: %s)' % (
                     STATUSES.by_value(job._status, 'UNKNOWN'), job._identifier)
         self.log(message, level='warning')
+
+
+class WorkerConfig(object):
+    """
+    The WorkerConfig class is aimed to be used in a script to run a worker.
+    All options which can be accepted by the Worker class can be passed as
+    arguments to the script (they are managed by optparse)
+    In a script, simply instantiate a WorkerConfig object then call its
+    "execute" method.
+    """
+
+    help = "Run a worker using redis-limpyd-jobs"
+
+    option_list = (
+        # pythonpath and worker-config are managed in the script, here just to
+        # not throw error if found on command line but not in defined options
+        make_option('--pythonpath', action='append',
+            help='A directory to add to the Python path, e.g. --pythonpath=/my/module'),
+        make_option('--worker-config', dest='worker_config',
+            help='The worker config class to use, e.g. --worker-config=my.module.MyWorkerConfig, '
+                  'default to limpyd_jobs.workers.WorkerConfig'),
+
+        make_option('--print-options', action='store_true', dest='print_options',
+            help='Print options as parsed by the script, e.g. --print-options'),
+        make_option('--dry-run', action='store_true', dest='dry_run',
+            help='Won\'t execute any job, just starts the worker and finish it immediatly, e.g. --dry-run'),
+
+        make_option('--name', action='store', dest='name',
+            help='Name of the Queues to handle e.g. --name=my-queue-name'),
+
+        make_option('--job-model', action='store', dest='job_model',
+            help='Name of the Job model to use, e.g. --job-model=my.module.JobModel'),
+        make_option('--queue-model', action='store', dest='queue_model',
+            help='Name of the Queue model to use, e.g. --queue-model=my.module.QueueModel'),
+        make_option('--error-model', action='store', dest='error_model',
+            help='Name of the Error model to use, e.g. --queue-model=my.module.ErrorModel'),
+
+        make_option('--worker-class', action='store', dest='worker_class',
+            help='Name of the Worker class to use, e.g. --worker-class=my.module.WorkerClass'),
+
+        make_option('--callback', action='store', dest='callback',
+            help='The callback to call for each job, e.g. --worker-class=my.module.callback'),
+
+        make_option('--logger-base-name', action='store', dest='logger_base_name',
+            help='The base name to use for logging, e.g. --logger-base-name="limpyd-jobs.%s"'),
+        make_option('--logger-level', action='store', dest='logger_level',
+            help='The level to use for logging, e.g. --worker-class=INFO'),
+
+        make_option('--save-errors', action='store_true', dest='save_errors',
+            help='Save job errors in the Error model, e.g. --save-errors'),
+        make_option('--no-save-errors', action='store_false', dest='save_errors',
+            help='Do not save job errors in the Error model, e.g. --no-save-errors'),
+
+        make_option('--max-loops', type='int', dest='max_loops',
+            help='Max number of jobs to run, e.g. --max-loops=100'),
+
+        make_option('--terminate-gracefuly', action='store_true', dest='terminate_gracefuly',
+            help='Intercept SIGTERM and SIGINT signals to stop gracefuly, e.g. --terminate-gracefuly'),
+        make_option('--no-terminate-gracefuly', action='store_false', dest='terminate_gracefuly',
+            help='Do NOT intercept SIGTERM and SIGINT signals, so don\'t stop gracefuly, e.g. --no-terminate-gracefuly'),
+
+        make_option('--timeout', type='int', dest='timeout',
+            help='Max delay (seconds) to wait for a redis BLPOP call (0 for no timeout), e.g. --timeout=30'),
+
+        make_option('--database', action='store', dest='database',
+            help='Redis database to use (host:port:db), e.g. --database=localhost:6379:15'),
+
+        make_option('--no-title', action='store_false', dest='update_title', default=True,
+            help="Do not update the title of the worker's process, e.g. --no-title"),
+    )
+
+    default_classes = {
+        'job_model': Job,
+        'queue_model': Queue,
+        'error_model': Error,
+        'worker_class': Worker,
+        'callback': None,
+    }
+
+    worker_options = ('name', 'job_model', 'queue_model', 'error_model',
+                      'callback', 'logger_base_name', 'logger_level',
+                      'save_errors', 'max_loops', 'terminate_gracefuly', 'timeout')
+
+    @staticmethod
+    def _import_module(module_uri):
+        return __import__(module_uri, {}, {}, [''])
+
+    @staticmethod
+    def import_class(class_uri):
+        """
+        Import a class by string 'from.path.module.class'
+        """
+        try:
+            from importlib import import_module
+            callback = import_module
+        except ImportError:
+            callback = WorkerConfig._import_module
+
+        parts = class_uri.split('.')
+        class_name = parts.pop()
+        module_uri = '.'.join(parts)
+
+        try:
+            module = callback(module_uri)
+        except ImportError:
+            # maybe we are still in a module, test going up one level
+            module = WorkerConfig.import_class(module_uri)
+
+        return getattr(module, class_name)
+
+    def __init__(self, argv=None):
+        """
+        Save arguments and program name
+        """
+        self.argv = argv or sys.argv[:]
+        self.prog_name = os.path.basename(self.argv[0])
+        self.manage_options()
+        if self.options.print_options:
+            self.print_options()
+        self.update_proc_title()
+
+    def get_version(self):
+        """
+        Return the limpyd_jobs version. May be overriden for subclasses
+
+        """
+        return '(redis-limpyd-jobs %s)' % limpyd_version
+
+    def usage(self):
+        """
+        Return a brief description of how to use the worker based on self.help
+
+        """
+        usage = '%prog [options]'
+        return '%s\n\n%s' % (usage, self.help)
+
+    def create_parser(self):
+        """
+        Create and return the ``OptionParser`` which will be used to
+        parse the arguments to the worker.
+
+        """
+        return OptionParser(prog=self.prog_name,
+                            usage=self.usage(),
+                            version='%%prog %s' % self.get_version(),
+                            option_list=self.option_list)
+
+    def manage_options(self):
+        """
+        Create a parser given the command-line arguments, creates a parser
+        Return True if the programme must exit.
+        """
+        self.parser = self.create_parser()
+        self.options, self.args = self.parser.parse_args(self.argv)
+
+        if self.argv[1:] in (['--help'], ['-h'], ['--version']):
+            # OptionParser already takes care of printing help and version.
+            # We should never pass here
+            return True
+
+        self.do_imports()
+
+        if self.options.callback and not callable(self.options.callback):
+            self.parser.error('The callback is not callable')
+
+        self.logger_level = None
+        if self.options.logger_level:
+            if self.options.logger_level.isdigit():
+                self.options.logger_level = int(self.options.logger_level)
+            else:
+                try:
+                    self.options.logger_level = getattr(logging, self.options.logger_level.upper())
+                except:
+                    self.parser.error('Invalid logger-level %s' % self.options.logger_level)
+
+        if self.options.max_loops is not None and self.options.max_loops < 0:
+            self.parser.error('The max-loops argument (%s) must be a positive integer' % self.options.max_loops)
+
+        if self.options.timeout is not None and self.options.timeout < 0:
+            self.parser.error('The timeout argument (%s) must be a positive integer (including 0)' % self.options.timeout)
+
+        self.database_config = None
+        if self.options.database:
+            host, port, db = self.options.database.split(':')
+            self.database_config = dict(host=host, port=int(port), db=int(db))
+
+        self.update_title = self.options.update_title
+
+    def do_import(self, name):
+        """
+        Import the given option (use default values if not defined on command line)
+        """
+        option = getattr(self.options, name)
+        if option:
+            klass = WorkerConfig.import_class(option)
+        else:
+            klass = self.default_classes[name]
+        setattr(self.options, name, klass)
+
+    def do_imports(self):
+        """
+        Import all importable options
+        """
+        for option in self.default_classes.keys():
+            try:
+                self.do_import(option)
+            except Exception, e:
+                self.parser.error('Unable to import "%s": %s' % (option, e))
+
+    def print_options(self):
+        """
+        Print all options as parsed by the script
+        """
+        options = []
+
+        if self.__class__ != WorkerConfig:
+            options.append(("worker_config", '%s.%s' % (self.__class__.__module__,
+                                                        self.__class__.__name__)))
+
+        if self.database_config:
+            options.append(("database", '%s:%s:%s' % (self.database_config['host'],
+                                                      self.database_config['port'],
+                                                      self.database_config['db'])))
+
+        if self.options.dry_run:
+            options.append(("dry_run", self.options.dry_run))
+
+        for option_name in self.worker_options:
+            option = getattr(self.options, option_name)
+            if option is not None:
+                options.append((option_name.replace('_', '-'), option))
+            # special case for worker_class which is not a worker option
+            if option_name == 'error_model' and self.options.worker_class is not None:
+                options.append(("worker-class", self.options.worker_class))
+
+        if options:
+            print "The worker will run with the following options:"
+            for name, value in options:
+                print " - %s = %s" % (name, value)
+
+    def execute(self):
+        """
+        Main method to call to run the worker
+        """
+        self.prepare_models()
+        self.prepare_worker()
+        self.run()
+
+    def prepare_models(self):
+        """
+        If a database config ws given as argument, apply it to our models
+        """
+        if self.database_config:
+            for model in (self.options.job_model, self.options.queue_model,
+                                                    self.options.error_model):
+                model.database.connect(**self.database_config)
+
+    def prepare_worker_options(self):
+        """
+        Prepare (and return as a dict) all options to be passed to the worker
+        """
+        worker_options = dict()
+        for option_name in (self.worker_options):
+            option = getattr(self.options, option_name)
+            if option is not None:
+                worker_options[option_name] = option
+        return worker_options
+
+    def prepare_worker(self):
+        """
+        Prepare the worker, ready to be launched: prepare options, create a
+        log handler if none, and manage dry_run options
+        """
+        worker_options = self.prepare_worker_options()
+        self.worker = self.options.worker_class(**worker_options)
+        if self.update_title:
+            self.worker.add_update_callback(self.update_proc_title)
+            self.update_proc_title()
+
+        if not self.worker.logger.handlers:
+            handler = logging.StreamHandler()
+            handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+            self.worker.logger.addHandler(handler)
+
+        if self.options.dry_run:
+            self.worker.end_forced = True
+
+    def run(self):
+        """
+        Simply run the worker by calling its "run" method
+        """
+        self.worker.run()
+
+    def get_proc_title(self):
+        """
+        Create the title for the current process (set by `update_proc_title`)
+        """
+        has_worker = bool(getattr(self, 'worker', None))
+
+        title_parts = [self.prog_name.replace('.py', ('#%s' % self.worker.id) if has_worker else '')]
+
+        status = 'init'
+        if has_worker and self.worker.status:
+            status = self.worker.status
+            if self.worker.end_forced:
+                status += ' - ending'
+        title_parts.append('[%s]' % status)
+
+        if has_worker and self.worker.name:
+            title_parts.append('queue=%s' % self.worker.name)
+
+        if has_worker and self.worker.status:
+            # add infos about the main loop
+            title_parts.append('loop=%s/%s' % (self.worker.num_loops, self.worker.max_loops))
+
+            # and about the number of jobs to run
+            title_parts.append('waiting-jobs=%s' % self.worker.count_waiting_jobs())
+
+        return ' '.join(title_parts)
+
+    def update_proc_title(self, worker=None):
+        """
+        Update the title of the process with useful informations
+        """
+        if not self.update_title:
+            return
+        setproctitle(self.get_proc_title())

@@ -1,7 +1,7 @@
 """
 This is a complex example. Forget the fact that we launch workers in threads,
 it's only for the example: you may launch them in separate processes with a
-supervisor (like supervisord).
+supervisor (like supervisord), using, or not, scripts/limpyd-worker.py
 Here, we subclass the Queue and Job model, to add new fields, and the Worker
 class to do specific stuff.
 The purpose of this example is to show you how you can use the possibilities

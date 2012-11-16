@@ -57,6 +57,14 @@ class Queue(BaseJobsModel):
         collection = cls.collection(name=name).sort(by='-priority')
         return [col.waiting.key for col in collection.instances()]
 
+    @classmethod
+    def count_waiting_jobs(cls, name):
+        """
+        Return the number of all jobs waiting in queues with the given name
+        """
+        collection = cls.collection(name=name).sort(by='-priority')
+        return sum([col.waiting.llen() for col in collection.instances()])
+
 
 class Job(BaseJobsModel):
     identifier = fields.HashableField(indexable=True)  # ex: "myobj:123:update"

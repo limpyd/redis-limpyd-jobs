@@ -2,12 +2,15 @@ import logging
 import threading
 import time
 import signal
+import sys
+from StringIO import StringIO
 
-from limpyd import fields
+from limpyd import __version__ as limpyd_version, fields
+from limpyd.contrib.database import PipelineDatabase
 from limpyd.exceptions import ImplementationError, DoesNotExist
 
 from limpyd_jobs.models import Queue, Job, Error
-from limpyd_jobs.workers import Worker
+from limpyd_jobs.workers import Worker, WorkerConfig
 from limpyd_jobs import STATUSES
 
 from .base import LimpydBaseTest
@@ -240,7 +243,7 @@ class WorkerRunTest(LimpydBaseTest):
         self.assertTrue(isinstance(worker.test_content[1], Job))
 
         # job must no be in the queue anymore
-        self.assertFalse(job.get_pk() in queue.waiting.lmembers())
+        self.assertNotIn(job.get_pk(), queue.waiting.lmembers())
 
     def test_get_job_method_should_return_a_job_based_on_its_pk(self):
         worker = Worker('test')
@@ -321,7 +324,7 @@ class WorkerRunTest(LimpydBaseTest):
         worker.run()
 
         self.assertEqual(job.status.hget(), STATUSES.SUCCESS)
-        self.assertTrue(job.get_pk() in queue.success.lmembers())
+        self.assertIn(job.get_pk(), queue.success.lmembers())
         self.assertEqual(worker.passed, 42)
 
     def test_job_error_method_should_be_called(self):
@@ -340,7 +343,7 @@ class WorkerRunTest(LimpydBaseTest):
         worker.run()
 
         self.assertEqual(job1.status.hget(), STATUSES.ERROR)
-        self.assertTrue(job1.get_pk() in queue.errors.lmembers())
+        self.assertIn(job1.get_pk(), queue.errors.lmembers())
         self.assertEqual(len(Error.collection()), 1)
         error = Error.get(identifier='job:1')
         self.assertEqual(error.message.hget(), 'You must implement your own action')
@@ -352,7 +355,7 @@ class WorkerRunTest(LimpydBaseTest):
         worker.run()
 
         self.assertEqual(job2.status.hget(), STATUSES.ERROR)
-        self.assertTrue(job2.get_pk() in queue.errors.lmembers())
+        self.assertIn(job2.get_pk(), queue.errors.lmembers())
         self.assertEqual(len(Error.collection()), 2)
         error = Error.get(identifier='job:2')
         self.assertEqual(error.message.hget(), 'foobar')
@@ -449,3 +452,256 @@ class WorkerRunTest(LimpydBaseTest):
         worker = Worker(name='test', max_loops=1)
         worker.run()
         self.assertEqual(worker.num_loops, 0)
+
+    def test_blpop_timeout(self):
+        class TestWorker(Worker):
+            def wait_for_job(self):
+                result = super(TestWorker, self).wait_for_job()
+                if result is None:
+                    # force end to quit quickly
+                    self.end_forced = True
+                return result
+
+        Queue.get_queue('test')
+
+        # test specific methods
+        worker = Worker(name='test', timeout=1)
+        worker.update_keys()
+        test_value = worker.wait_for_job()
+        self.assertIsNone(test_value)
+
+        # test whole run
+        worker = TestWorker(name='test', timeout=1)
+        worker.run()
+        self.assertEqual(worker.num_loops, 0)
+
+
+class WorkerConfigBaseTest(LimpydBaseTest):
+
+    def setUp(self):
+        super(WorkerConfigBaseTest, self).setUp()
+        self.old_stdout = sys.stdout
+        sys.stdout = self.stdout = StringIO()
+        self.old_stderr = sys.stderr
+        self.stderr = StringIO()
+
+    def tearDown(self):
+        sys.stdout = self.old_stdout
+        sys.stderr = self.old_stderr
+        super(WorkerConfigBaseTest, self).tearDown()
+
+    def mkargs(self, args=None):
+        if args is None:
+            args = ''
+        return ['test-script'] + args.split(' ')
+
+
+class WorkerConfigArgumentsTest(WorkerConfigBaseTest):
+    class JobModel(Job):
+        namespace = 'WorkerConfigArgumentsTest'
+
+    class QueueModel(Queue):
+        namespace = 'WorkerConfigArgumentsTest'
+
+    class ErrorModel(Error):
+        namespace = 'WorkerConfigArgumentsTest'
+
+    class WorkerClass(Worker):
+        pass
+
+    @staticmethod
+    def callback(job, queue):
+        pass
+
+    not_a_callback = True
+
+    def test_help_argument(self):
+        with self.assertSystemExit(in_stdout='Usage: '):
+            WorkerConfig(self.mkargs('--help'))
+
+    def test_version_argument(self):
+        with self.assertSystemExit(in_stdout='(redis-limpyd-jobs %s)' % limpyd_version):
+            WorkerConfig(self.mkargs('--version'))
+
+    def test_print_options_arguments(self):
+        class TestWorkerConfig(WorkerConfig):
+            pass
+
+        TestWorkerConfig(self.mkargs('--print-options --name=foo --dry-run --database=localhost:6379:15'))
+        out = self.stdout.getvalue()
+        self.assertTrue(out.startswith('The worker will run with the following options:'))
+        self.assertIn('name = foo', out)
+        self.assertIn('dry_run = True', out)
+        self.assertIn('database = localhost:6379:15', out)
+        self.assertIn('worker_config = tests.workers.TestWorkerConfig', out)
+
+    def test_dryrun_argument(self):
+        conf = WorkerConfig(self.mkargs('--dry-run'))
+        self.assertTrue(conf.options.dry_run)
+
+    def test_name_argument(self):
+        conf = WorkerConfig(self.mkargs('--name=foo'))
+        self.assertEqual(conf.options.name, 'foo')
+
+    def test_job_model_argument(self):
+        conf = WorkerConfig(self.mkargs('--job-model=tests.workers.WorkerConfigArgumentsTest.JobModel'))
+        self.assertEqual(conf.options.job_model, self.JobModel)
+
+        with self.assertSystemExit(in_stderr='Unable to import "job_model"'):
+            WorkerConfig(self.mkargs('--job-model=foo.bar'))
+
+    def test_queue_model_argument(self):
+        conf = WorkerConfig(self.mkargs('--queue-model=tests.workers.WorkerConfigArgumentsTest.QueueModel'))
+        self.assertEqual(conf.options.queue_model, self.QueueModel)
+
+        with self.assertSystemExit(in_stderr='Unable to import "queue_model"'):
+            WorkerConfig(self.mkargs('--queue-model=foo.bar'))
+
+    def test_error_model_argument(self):
+        conf = WorkerConfig(self.mkargs('--error-model=tests.workers.WorkerConfigArgumentsTest.ErrorModel'))
+        self.assertEqual(conf.options.error_model, self.ErrorModel)
+
+        with self.assertSystemExit(in_stderr='Unable to import "error_model"'):
+            WorkerConfig(self.mkargs('--error-model=foo.bar'))
+
+    def test_worker_class_argument(self):
+        conf = WorkerConfig(self.mkargs('--worker-class=tests.workers.WorkerConfigArgumentsTest.WorkerClass'))
+        self.assertEqual(conf.options.worker_class, self.WorkerClass)
+
+        with self.assertSystemExit(in_stderr='Unable to import "worker_class"'):
+            WorkerConfig(self.mkargs('--worker-class=foo.bar'))
+
+    def test_callback_argument(self):
+        conf = WorkerConfig(self.mkargs('--callback=tests.workers.WorkerConfigArgumentsTest.callback'))
+        self.assertEqual(conf.options.callback, self.callback)
+
+        with self.assertSystemExit(in_stderr='Unable to import "callback"'):
+            WorkerConfig(self.mkargs('--callback=foo.bar'))
+
+        with self.assertSystemExit(in_stderr='The callback is not callable'):
+            WorkerConfig(self.mkargs('--callback=tests.workers.WorkerConfigArgumentsTest.not_a_callback'))
+
+    def test_logger_arguments(self):
+        conf = WorkerConfig(self.mkargs('--logger-base-name=foo --logger-level=debug'))
+        self.assertEqual(conf.options.logger_base_name, 'foo')
+        self.assertEqual(conf.options.logger_level, logging.DEBUG)
+
+        conf = WorkerConfig(self.mkargs('--logger-level=10'))
+        self.assertEqual(conf.options.logger_level, logging.DEBUG)
+
+        conf = WorkerConfig(self.mkargs('--logger-level=15'))
+        self.assertEqual(conf.options.logger_level, 15)
+
+        with self.assertSystemExit(in_stderr='Invalid logger-level bar'):
+            WorkerConfig(self.mkargs('--logger-level=bar'))
+
+    def test_save_errors_arguments(self):
+        conf = WorkerConfig(self.mkargs())
+        self.assertIsNone(conf.options.save_errors)
+
+        conf = WorkerConfig(self.mkargs('--save-errors'))
+        self.assertTrue(conf.options.save_errors)
+
+        conf = WorkerConfig(self.mkargs('--no-save-errors'))
+        self.assertFalse(conf.options.save_errors)
+
+    def test_max_loops_argument(self):
+        conf = WorkerConfig(self.mkargs('--max-loops=100'))
+        self.assertEqual(conf.options.max_loops, 100)
+
+        with self.assertSystemExit(in_stderr='option --max-loops: invalid integer value:'):
+            WorkerConfig(self.mkargs('--max-loops=foo'))
+
+        with self.assertSystemExit(in_stderr='The max-loops argument'):
+            WorkerConfig(self.mkargs('--max-loops=-1'))
+
+    def test_terminate_gracefuly_arguments(self):
+        conf = WorkerConfig(self.mkargs())
+        self.assertIsNone(conf.options.terminate_gracefuly)
+
+        conf = WorkerConfig(self.mkargs('--terminate-gracefuly'))
+        self.assertTrue(conf.options.terminate_gracefuly)
+
+        conf = WorkerConfig(self.mkargs('--no-terminate-gracefuly'))
+        self.assertFalse(conf.options.terminate_gracefuly)
+
+    def test_timeout_argument(self):
+        conf = WorkerConfig(self.mkargs('--timeout=5'))
+        self.assertEqual(conf.options.timeout, 5)
+
+        with self.assertSystemExit(in_stderr="option --timeout: invalid integer value: 'none'"):
+            WorkerConfig(self.mkargs('--timeout=none'))
+
+        with self.assertSystemExit(in_stderr="must be a positive integer"):
+            WorkerConfig(self.mkargs('--timeout=-1'))
+
+    def test_database_argument(self):
+        conf = WorkerConfig(self.mkargs('--database=localhost:6379:15'))
+        self.assertEqual(conf.database_config, dict(host='localhost', port=6379, db=15))
+
+    def test_title_argument(self):
+        conf = WorkerConfig(self.mkargs())
+        self.assertTrue(conf.update_title)
+
+        conf = WorkerConfig(self.mkargs('--no-title'))
+        self.assertFalse(conf.update_title)
+
+
+# can't be defined in WorkerConfigRunTest and used in its *ModelOtherDB classes
+other_database = PipelineDatabase(host='localhost', port=6379, db=15)
+
+
+class WorkerConfigRunTest(WorkerConfigBaseTest):
+    class WorkerClass(Worker):
+        pass
+
+    class JobModelOtherDB(Job):
+        namespace = 'WorkerConfigRunTest'
+        database = other_database
+
+    class QueueModelOtherDB(Queue):
+        namespace = 'WorkerConfigRunTest'
+        database = other_database
+
+    class ErrorModelOtherDB(Error):
+        namespace = 'WorkerConfigRunTest'
+        database = other_database
+
+    def test_prepare_worker(self):
+        conf = WorkerConfig(self.mkargs('--name=foo'))
+        self.assertIsNone(getattr(conf, 'worker', None))
+
+        conf.prepare_worker()
+        self.assertIsInstance(conf.worker, Worker)
+
+        conf = WorkerConfig(self.mkargs('--name=bar --worker-class=tests.workers.WorkerConfigRunTest.WorkerClass'))
+        conf.prepare_worker()
+        self.assertIsInstance(conf.worker, WorkerConfigRunTest.WorkerClass)
+        self.assertFalse(conf.worker.end_forced)
+
+        conf = WorkerConfig(self.mkargs('--name=baz --dry-run'))
+        conf.prepare_worker()
+        self.assertTrue(conf.worker.end_forced)
+
+    def test_proc_title(self):
+        conf = WorkerConfig(self.mkargs('--name=foo'))
+        self.assertEqual('test-script [init]', conf.get_proc_title())
+
+        conf.prepare_worker()
+        self.assertEqual('test-script [init] queue=foo', conf.get_proc_title())
+
+        conf.worker.status = 'waiting'
+        self.assertEqual('test-script [waiting] queue=foo loop=0/1000 waiting-jobs=0', conf.get_proc_title())
+
+        conf.worker.end_forced = True
+        self.assertEqual('test-script [waiting - ending] queue=foo loop=0/1000 waiting-jobs=0', conf.get_proc_title())
+
+    def test_prepare_models(self):
+        conf = WorkerConfig(self.mkargs('--name=foo --database=localhost:6379:13'
+                                        ' --job-model=tests.workers.WorkerConfigRunTest.JobModelOtherDB'
+                                        ' --queue-model=tests.workers.WorkerConfigRunTest.QueueModelOtherDB'
+                                        ' --error-model=tests.workers.WorkerConfigRunTest.ErrorModelOtherDB'))
+        conf.prepare_models()
+        for model_name in ('job', 'queue', 'error'):
+            model = getattr(conf.options, '%s_model' % model_name)
+            self.assertEqual(model.database.connection_settings['db'], 13)

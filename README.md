@@ -230,7 +230,7 @@ The `Queue` model has no specific properties or method.
 
 #### Queue class methods
 
-The `Queue` model provides two class methods:
+The `Queue` model provides a few class methods:
 
 ##### `get_queue`
 
@@ -250,6 +250,15 @@ If you use a subclass of the `Queue` model, you can pass additional arguments to
 
 The `get_keys` class method returns all the existing queue with a given name, sorted by priority (reverse order: the highest priorities come first).
 The returned value is a list of redis keys for each `waiting` lists of matching queues. It's used internally by the workers as argument to the `blpop` redis command.
+
+##### `count_waiting_jobs`
+
+The `count_waiting_jobs` class method returns the number of jobs still waiting for a given queue name, combining all priorities.
+
+Arguments:
+
+- name
+    The name of the queues to take into accounts
 
 ### Error
 
@@ -642,6 +651,139 @@ def log(self, message, level='info')
 Returns nothing
 
 `log` is a simple wrapper around `self.logger`, which automatically add the `id` of the worker at the beginning. It can accepts a `level` argument which is `info` by default.
+
+##### `set_status`
+
+Signature:
+```python
+def set_status(self, status)
+```
+Returns nothing
+
+`set_status` simply update the worker's status and then call all callbacks added by `add_update_callback`.
+
+##### `add_update_callback`
+
+Signature:
+```python
+def add_update_callback(self, callback)
+```
+
+`add_update_callback` add a callback to execute when `set_status` is called.
+
+##### ``
+
+Signature:
+```python
+def remove_update_callback(self, callback)
+```
+
+`remove_update_callback` remove a callback previously added by `add_update_callback`.
+
+##### `count_waiting_jobs`
+
+Signature:
+```python
+def count_waiting_jobs(self)
+```
+
+`count_waiting_jobs` returns the number of jobs in waiting state that can be run by this worker.
+
+
+### The limpyd-worker.py script
+
+To help using `limpyd_jobs`, a executable python script is provided: `scripts/limpyd-worker.py`
+
+This script is highly configurable to help you launching workers without having to write a script or customize the one included.
+
+With this script you don't have to write a custom worker too, because all arguments attened by a worker can be passed as arguments to the script.
+
+The script is based on a `WorkerConfig` class defined in `limpyd_jobs.workers`, that you can customize by sublassing it, and you can tell the script to use your class instead of the default one.
+
+You can even pass one or many python paths to add to `sys.path`.
+
+This script is thinked to ease you as much as possible.
+
+Instead of explaining all arguments, see below the result of the `--help` command for this script:
+
+```bash
+$ scripts/limpyd-worker.py  --help
+Usage: limpyd-worker.py [options]
+
+Run a worker using redis-limpyd-jobs
+
+Options:
+  --pythonpath=PYTHONPATH
+                        A directory to add to the Python path, e.g.
+                        --pythonpath=/my/module
+  --worker-config=WORKER_CONFIG
+                        The worker config class to use, e.g. --worker-
+                        config=my.module.MyWorkerConfig, default to
+                        limpyd_jobs.workers.WorkerConfig
+  --print-options       Print options as parsed by the script, e.g. --print-
+                        options
+  --dry-run             Won't execute any job, just starts the worker and
+                        finish it immediatly, e.g. --dry-run
+  --name=NAME           Name of the Queues to handle e.g. --name=my-queue-name
+  --job-model=JOB_MODEL
+                        Name of the Job model to use, e.g. --job-
+                        model=my.module.JobModel
+  --queue-model=QUEUE_MODEL
+                        Name of the Queue model to use, e.g. --queue-
+                        model=my.module.QueueModel
+  --errro-model=ERROR_MODEL
+                        Name of the Error model to use, e.g. --queue-
+                        model=my.module.ErrorModel
+  --worker-class=WORKER_CLASS
+                        Name of the Worker class to use, e.g. --worker-
+                        class=my.module.WorkerClass
+  --callback=CALLBACK   The callback to call for each job, e.g. --worker-
+                        class=my.module.callback
+  --logger-base-name=LOGGER_BASE_NAME
+                        The base name to use for logging, e.g. --logger-base-
+                        name="limpyd-jobs.%s"
+  --logger-level=LOGGER_LEVEL
+                        The level to use for logging, e.g. --worker-class=INFO
+  --save-errors         Save job errors in the Error model, e.g. --save-errors
+  --no-save-errors      Do not save job errors in the Error model, e.g. --no-
+                        save-errors
+  --max-loops=MAX_LOOPS
+                        Max number of jobs to run, e.g. --max-loops=100
+  --terminate-gracefuly
+                        Intercept SIGTERM and SIGINT signals to stop
+                        gracefuly, e.g. --terminate-gracefuly
+  --no-terminate-gracefuly
+                        Do NOT intercept SIGTERM and SIGINT signals, so don't
+                        stop gracefuly, e.g. --no-terminate-gracefuly
+  --timeout=TIMEOUT     Max delay (seconds) to wait for a redis BLPOP call (0
+                        for no timeout), e.g. --timeout=30
+  --database=DATABASE   Redis database to use (host:port:db), e.g.
+                        --database=localhost:6379:15
+  --no-title            Do not update the title of the worker's process, e.g.
+                        --no-title
+  --version             show program's version number and exit
+  -h, --help            show this help message and exit
+```
+
+Except for `--pythonpath`, `--worker-config`, `--print-options`,`--dry-run`, `--worker-class` and `--no-title`, all options will be passed to the worker.
+
+So, if you use the default models, the default worker with its default options,to launch a worker to work on the queue `queue-name`, all you need to do is:
+
+```
+scripts/limpyd-worder.py --name=queue-name
+```
+
+We use the `setproctitle` module to display useful informations in the process name, to have stuff like this:
+
+```
+limpyd-worker#1566090 [init] queue=foo
+limpyd-worker#1566090 [starting] queue=foo loop=0/1000 waiting-jobs=10
+limpyd-worker#1566090 [running] queue=foo loop=1/1000 waiting-jobs=9
+limpyd-worker#1566090 [terminated] queue=foo loop=10/1000 waiting-jobs=0
+```
+
+You can disable it by passing the `--no-title` argument.
+
 
 ## Final words
 
