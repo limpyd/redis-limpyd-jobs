@@ -610,7 +610,7 @@ class WorkerConfig(object):
         if self.database_config:
             for model in (self.options.job_model, self.options.queue_model,
                                                     self.options.error_model):
-                model.database.connect(**self.database_config)
+                model.database.reset(**self.database_config)
 
     def prepare_worker_options(self):
         """

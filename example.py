@@ -43,9 +43,9 @@ class MyQueue(ModelConfigMixin, Queue):
     """
     A queue that will store the dates of it's first and last successful job
     """
-    first_job_date = fields.HashableField()
-    last_job_date = fields.HashableField()
-    jobs_counter = fields.HashableField()
+    first_job_date = fields.InstanceHashField()
+    last_job_date = fields.InstanceHashField()
+    jobs_counter = fields.InstanceHashField()
 
 
 class MyJob(ModelConfigMixin, Job):
@@ -55,7 +55,7 @@ class MyJob(ModelConfigMixin, Job):
     """
     result = fields.StringField()  # to store the result of the task
     queue_model = MyQueue
-    start = fields.HashableField(indexable=True)
+    start = fields.InstanceHashField(indexable=True)
 
     def get_object(self):
         """
@@ -78,9 +78,9 @@ class Person(ModelConfigMixin, model.RedisModel):
     """
     cacheable = False
 
-    firstname = fields.HashableField()
-    lastname = fields.HashableField()
-    fullname = fields.HashableField()
+    firstname = fields.InstanceHashField()
+    lastname = fields.InstanceHashField()
+    fullname = fields.InstanceHashField()
 
 
 class FullNameWorker(Worker):

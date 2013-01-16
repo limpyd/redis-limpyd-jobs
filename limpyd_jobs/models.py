@@ -27,8 +27,8 @@ class BaseJobsModel(related.RelatedModel):
 
 
 class Queue(BaseJobsModel):
-    name = fields.HashableField(indexable=True)
-    priority = fields.HashableField(indexable=True, default=0)  # the higher, the better
+    name = fields.InstanceHashField(indexable=True)
+    priority = fields.InstanceHashField(indexable=True, default=0)  # the higher, the better
     waiting = fields.ListField()
     success = fields.ListField()
     errors = fields.ListField()
@@ -67,11 +67,11 @@ class Queue(BaseJobsModel):
 
 
 class Job(BaseJobsModel):
-    identifier = fields.HashableField(indexable=True)  # ex: "myobj:123:update"
-    status = fields.HashableField(indexable=True)  # see statuses constants
-    priority = fields.HashableField(indexable=True, default=0)
-    start = fields.HashableField()
-    end = fields.HashableField()
+    identifier = fields.InstanceHashField(indexable=True)  # ex: "myobj:123:update"
+    status = fields.InstanceHashField(indexable=True)  # see statuses constants
+    priority = fields.InstanceHashField(indexable=True, default=0)
+    start = fields.InstanceHashField()
+    end = fields.InstanceHashField()
 
     queue_model = Queue
 
@@ -138,13 +138,13 @@ class Job(BaseJobsModel):
 
 
 class Error(BaseJobsModel):
-    identifier = fields.HashableField(indexable=True)
-    queue_name = fields.HashableField(indexable=True)
-    date = fields.HashableField(indexable=True)
-    time = fields.HashableField()
-    type = fields.HashableField(indexable=True)
-    code = fields.HashableField(indexable=True)
-    message = fields.HashableField()
+    identifier = fields.InstanceHashField(indexable=True)
+    queue_name = fields.InstanceHashField(indexable=True)
+    date = fields.InstanceHashField(indexable=True)
+    time = fields.InstanceHashField()
+    type = fields.InstanceHashField(indexable=True)
+    code = fields.InstanceHashField(indexable=True)
+    message = fields.InstanceHashField()
 
     @classmethod
     def add_error(cls, queue_name, identifier, error, when=None, **additional_fields):

@@ -363,7 +363,7 @@ class WorkerRunTest(LimpydBaseTest):
 
     def test_error_model_with_additional_fields(self):
         class TestError(Error):
-            foo = fields.HashableField()
+            foo = fields.InstanceHashField()
 
         class TestWorker(Worker):
             error_model = TestError

@@ -3,11 +3,14 @@ import sys
 from StringIO import StringIO
 from unittest.case import _AssertRaisesContext
 
-from limpyd import DEFAULT_CONNECTION_SETTINGS, TEST_CONNECTION_SETTINGS
+from limpyd.database import DEFAULT_CONNECTION_SETTINGS
 from limpyd.contrib.database import PipelineDatabase
 
 from limpyd_jobs import STATUSES
 from limpyd_jobs.models import BaseJobsModel
+
+TEST_CONNECTION_SETTINGS = DEFAULT_CONNECTION_SETTINGS.copy()
+TEST_CONNECTION_SETTINGS['db'] = 15
 
 test_database = PipelineDatabase(**TEST_CONNECTION_SETTINGS)
 
