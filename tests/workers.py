@@ -237,25 +237,25 @@ class WorkerRunTest(LimpydBaseTest):
         time.sleep(0.1)
 
         # info should be received
-        self.assertEqual(worker.test_content[0].get_pk(), queue.get_pk())
+        self.assertEqual(worker.test_content[0].pk.get(), queue.pk.get())
         self.assertTrue(isinstance(worker.test_content[0], Queue))
-        self.assertEqual(worker.test_content[1].get_pk(), job.get_pk())
+        self.assertEqual(worker.test_content[1].pk.get(), job.pk.get())
         self.assertTrue(isinstance(worker.test_content[1], Job))
 
         # job must no be in the queue anymore
-        self.assertNotIn(job.get_pk(), queue.waiting.lmembers())
+        self.assertNotIn(job.pk.get(), queue.waiting.lmembers())
 
     def test_get_job_method_should_return_a_job_based_on_its_pk(self):
         worker = Worker('test')
         job = Job.add_job(queue_name='test', identifier='job:1')
 
         # a job...
-        test_job = worker.get_job(job.get_pk())
+        test_job = worker.get_job(job.pk.get())
         self.assertTrue(isinstance(test_job, Job))
-        self.assertEqual(test_job.get_pk(), job.get_pk())
+        self.assertEqual(test_job.pk.get(), job.pk.get())
 
         # not a job...
-        with self.assertRaises(ValueError):
+        with self.assertRaises(DoesNotExist):
             worker.get_job('foo')
 
     def test_get_queue_method_should_return_a_queue_based_on_its_waiting_field_key(self):
@@ -265,11 +265,11 @@ class WorkerRunTest(LimpydBaseTest):
         # a queue...
         test_queue = worker.get_queue(queue.waiting.key)
         self.assertTrue(isinstance(test_queue, Queue))
-        self.assertEqual(test_queue.get_pk(), queue.get_pk())
+        self.assertEqual(test_queue.pk.get(), queue.pk.get())
 
         # a non_existing_queue
         fake_queue_key = test_queue.waiting.key.replace('1', '2')
-        with self.assertRaises(ValueError):
+        with self.assertRaises(DoesNotExist):
             worker.get_queue(fake_queue_key)
 
         # not a queue...
@@ -297,15 +297,15 @@ class WorkerRunTest(LimpydBaseTest):
         result = {}
 
         def callback(job, queue):
-            result['job'] = job.get_pk()
-            result['queue'] = queue.get_pk()
+            result['job'] = job.pk.get()
+            result['queue'] = queue.pk.get()
 
         job = Job.add_job(identifier='job:1', queue_name='test')
         queue = Queue.get_queue(name='test')
         worker = Worker(name='test', callback=callback, max_loops=1)
         worker.run()
 
-        self.assertEqual(result, {'job': job.get_pk(), 'queue': queue.get_pk()})
+        self.assertEqual(result, {'job': job.pk.get(), 'queue': queue.pk.get()})
 
     def test_job_success_method_should_be_called(self):
         class TestWorker(Worker):
@@ -324,7 +324,7 @@ class WorkerRunTest(LimpydBaseTest):
         worker.run()
 
         self.assertEqual(job.status.hget(), STATUSES.SUCCESS)
-        self.assertIn(job.get_pk(), queue.success.lmembers())
+        self.assertIn(job.pk.get(), queue.success.lmembers())
         self.assertEqual(worker.passed, 42)
 
     def test_job_error_method_should_be_called(self):
@@ -343,7 +343,7 @@ class WorkerRunTest(LimpydBaseTest):
         worker.run()
 
         self.assertEqual(job1.status.hget(), STATUSES.ERROR)
-        self.assertIn(job1.get_pk(), queue.errors.lmembers())
+        self.assertIn(job1.pk.get(), queue.errors.lmembers())
         self.assertEqual(len(Error.collection()), 1)
         error = Error.get(identifier='job:1')
         self.assertEqual(error.message.hget(), 'You must implement your own action')
@@ -355,7 +355,7 @@ class WorkerRunTest(LimpydBaseTest):
         worker.run()
 
         self.assertEqual(job2.status.hget(), STATUSES.ERROR)
-        self.assertIn(job2.get_pk(), queue.errors.lmembers())
+        self.assertIn(job2.pk.get(), queue.errors.lmembers())
         self.assertEqual(len(Error.collection()), 2)
         error = Error.get(identifier='job:2')
         self.assertEqual(error.message.hget(), 'foobar')
@@ -371,7 +371,7 @@ class WorkerRunTest(LimpydBaseTest):
             def additional_error_fields(self, job, queue, exception):
                 return {
                     'foo': 'Error on queue %s for job %s' % (
-                        job.get_pk(), queue.get_pk()
+                        job.pk.get(), queue.pk.get()
                     )
                 }
 
@@ -381,7 +381,7 @@ class WorkerRunTest(LimpydBaseTest):
         worker.run()
 
         error = TestError.get(identifier='job:1')
-        attended_foo = 'Error on queue %s for job %s' % (job.get_pk(), queue.get_pk())
+        attended_foo = 'Error on queue %s for job %s' % (job.pk.get(), queue.pk.get())
         self.assertEqual(error.foo.hget(), attended_foo)
 
     def test_run_ended_method_should_be_called(self):

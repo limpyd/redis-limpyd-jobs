@@ -151,7 +151,7 @@ class FullNameWorker(Worker):
         queue.jobs_counter.hincrby(1)
 
         # save a ref to the job
-        self.jobs.append(int(job.get_pk()))
+        self.jobs.append(int(job.pk.get()))
 
         # save the result of the callback in the job itself
         job.result.set(job_result)
@@ -171,9 +171,9 @@ class FullNameWorker(Worker):
         obj = job.get_object()
         obj.fullname.hset('%s %s' % tuple(obj.hmget('firstname', 'lastname')))
 
-        result = 'Created fullname for Person %s: %s' % (obj.get_pk(), obj.fullname.hget())
+        result = 'Created fullname for Person %s: %s' % (obj.pk.get(), obj.fullname.hget())
 
-        message = '[%s] %s [%s]' % (obj.get_pk(), result, threading.current_thread().name)
+        message = '[%s] %s [%s]' % (obj.pk.get(), result, threading.current_thread().name)
 
         self.log(message)
         return result
@@ -236,19 +236,19 @@ print '\nPersons:'
 for person in Person.collection().instances():
     firstname, lastname, fullname = person.hmget('firstname', 'lastname', 'fullname')
     print '\t[%s] "%s" "%s" => "%s"' % (
-        person.get_pk(), firstname, lastname, fullname or '*NOT EXECUTED*'
+        person.pk.get(), firstname, lastname, fullname or '*NOT EXECUTED*'
     )
 
 print '\nJobs:'
 for job in MyJob.collection(status=STATUSES.SUCCESS).sort(by='start', alpha=True).instances():
     identifier, priority, result = job.hmget('identifier', 'priority', 'result')
     print '\t[%s] (identifier: %s, priority %s) executed in %s => %s' % (
-        job.get_pk(), identifier, priority, job.duration, job.result.get()
+        job.pk.get(), identifier, priority, job.duration, job.result.get()
     )
 for job in MyJob.collection(status=STATUSES.WAITING).sort(by='identifier').instances():
     identifier, priority = job.hmget('identifier', 'priority')
     print '\t[%s] (identifier: %s, priority %s) waiting' % (
-        job.get_pk(), identifier, priority
+        job.pk.get(), identifier, priority
     )
 
 print '\nWorkers:'

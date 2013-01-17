@@ -85,7 +85,7 @@ class JobsTests(LimpydBaseTest):
 
         # check that the job is in the queue
         jobs = queue.waiting.lrange(0, -1)
-        self.assertEqual(jobs, [str(job.get_pk())])
+        self.assertEqual(jobs, [str(job.pk.get())])
 
         # ... with the correct status and priority
         self.assert_job_status_and_priority(job, STATUSES.WAITING, '5')
@@ -95,7 +95,7 @@ class JobsTests(LimpydBaseTest):
         job2 = Job.add_job(identifier='job:1', queue_name='test', priority=3)
 
         # only one job
-        self.assertEqual(job1.get_pk(), job2.get_pk())
+        self.assertEqual(job1.pk.get(), job2.pk.get())
         # is in high priority queue
         queue = Queue.get_queue(name='test', priority=3)
         self.assertEqual(queue.waiting.llen(), 1)
@@ -113,7 +113,7 @@ class JobsTests(LimpydBaseTest):
         job2 = Job.add_job(identifier='job:1', queue_name='test', priority=1)
 
         # only one job
-        self.assertEqual(job1.get_pk(), job2.get_pk())
+        self.assertEqual(job1.pk.get(), job2.pk.get())
         # is in high priority queue
         queue = Queue.get_queue(name='test', priority=3)
         self.assertEqual(queue.waiting.llen(), 1)
@@ -133,7 +133,7 @@ class JobsTests(LimpydBaseTest):
         queue2 = Queue.get_queue(name='test', priority=2)
 
         # only one job
-        self.assertEqual(job1.get_pk(), job2.get_pk())
+        self.assertEqual(job1.pk.get(), job2.pk.get())
         # not anymore in queue with priority 1
         self.assertEqual(queue1.waiting.llen(), 0)
         # but now in queue with priority 2
@@ -149,16 +149,16 @@ class JobsTests(LimpydBaseTest):
 
         job1 = Job.add_job(identifier='job:1', queue_name='test', priority=1)
         job2 = Job.add_job(identifier='job:2', queue_name='test', priority=1)
-        self.assertEqual(queue.waiting.lmembers(), [job1.get_pk(), job2.get_pk()])
+        self.assertEqual(queue.waiting.lmembers(), [job1.pk.get(), job2.pk.get()])
 
         Job.add_job(identifier='job:2', queue_name='test', priority=1, prepend=True)
-        self.assertEqual(queue.waiting.lmembers(), [job2.get_pk(), job1.get_pk()])
+        self.assertEqual(queue.waiting.lmembers(), [job2.pk.get(), job1.pk.get()])
 
     def test_prepending_a_new_job_should_add_it_at_the_beginning(self):
         job1 = Job.add_job(identifier='job:1', queue_name='test', priority=1)
         job2 = Job.add_job(identifier='job:2', queue_name='test', priority=1, prepend=True)
         queue = Queue.get_queue(name='test', priority=1)
-        self.assertEqual(queue.waiting.lmembers(), [job2.get_pk(), job1.get_pk()])
+        self.assertEqual(queue.waiting.lmembers(), [job2.pk.get(), job1.pk.get()])
 
     def test_duration_should_compute_end_start_difference(self):
         start = datetime.utcnow()
@@ -243,7 +243,7 @@ class ErrorsTest(LimpydBaseTest):
     def test_add_error_method_should_add_an_error_instance(self):
         e = ErrorsTest.ExceptionWithCode('the answer', 42)
         error1 = Error.add_error(queue_name='test', identifier='job:1', error=e)
-        self.assertEqual(list(Error.collection()), [error1.get_pk()])
+        self.assertEqual(list(Error.collection()), [error1.pk.get()])
         Error.add_error(queue_name='test', identifier='job:1', error=e)
         self.assertEqual(len(Error.collection()), 2)
 

@@ -270,7 +270,7 @@ class Worker(object):
                 self.log('Unable to get job: %s' % str(e), level='error')
             else:
                 self.num_loops += 1
-                identifier = 'pk:%s' % job.get_pk()  # default if failure
+                identifier = 'pk:%s' % job.pk.get()  # default if failure
                 try:
                     self.set_status('running')
                     identifier, status = job.hmget('identifier', 'status')
@@ -312,7 +312,7 @@ class Worker(object):
         Called when an exception was raised during the execute call for a job.
         """
         job.hmset(end=str(datetime.utcnow()), status=STATUSES.ERROR)
-        queue.errors.rpush(job.get_pk())
+        queue.errors.rpush(job.pk.get())
 
         if self.save_errors:
             additional_fields = self.additional_error_fields(job, queue, exception)
@@ -331,7 +331,7 @@ class Worker(object):
         job_result is the value returned by the callback, if any.
         """
         job.hmset(end=str(datetime.utcnow()), status=STATUSES.SUCCESS)
-        queue.success.rpush(job.get_pk())
+        queue.success.rpush(job.pk.get())
 
         if not message:
             message = '[%s] success, in %s' % (job._identifier, job.duration)

@@ -108,7 +108,7 @@ class Job(BaseJobsModel):
 
             # remove it from the current queue, we'll add it to the new one later
             current_queue = queue_model.get_queue(queue_name, current_priority)
-            current_queue.waiting.lrem(0, job.get_pk())
+            current_queue.waiting.lrem(0, job.pk.get())
 
         elif fields_if_new:
             job.set_fields(**fields_if_new)
@@ -120,7 +120,7 @@ class Job(BaseJobsModel):
 
         # and add it to the new queue
         push_method = getattr(queue.waiting, 'lpush' if prepend else 'rpush')
-        push_method(job.get_pk())
+        push_method(job.pk.get())
 
         return job
 
