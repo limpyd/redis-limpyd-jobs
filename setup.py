@@ -2,27 +2,51 @@
 # -*- coding: utf-8 -*-
 
 import codecs
+import os
 
-from setuptools import setup, find_packages
+from setuptools import setup
 
-import limpyd
+basedir = os.path.dirname(__file__)
 
-long_description = codecs.open('README.md', "r", "utf-8").read()
+
+def get_infos():
+    with codecs.open(os.path.join(basedir, 'limpyd_jobs/version.py'), "r", "utf-8") as f:
+        locals = {}
+        exec(f.read(), locals)
+        return {
+            '__doc__': locals['__doc__'],
+            '__version__': locals['__version__'],
+            '__author__': locals['__author__'],
+            '__contact__': locals['__contact__'],
+            '__homepage__': locals['__homepage__'],
+        }
+    raise RuntimeError('No infos found.')
+
+
+long_description = codecs.open(os.path.join(basedir, 'README.md'), "r", "utf-8").read()
+infos = get_infos()
 
 setup(
     name = "redis-limpyd-jobs",
-    version = limpyd.__version__,
-    author = limpyd.__author__,
-    author_email = limpyd.__contact__,
-    description = limpyd.__doc__,
-    keywords = "redis",
-    url = limpyd.__homepage__,
-    download_url = "https://github.com/twidi/redis-limpyd-jobs/downloads",
-    packages = find_packages(),
+    version = infos['__version__'],
+    author = infos['__author__'],
+    author_email = infos['__contact__'],
+    description = infos['__doc__'],
+    keywords = "redis, jobs",
+    url = infos['__homepage__'],
+    download_url = "https://github.com/twidi/redis-limpyd-jobs/tags",
+    packages = ['limpyd_jobs'],
     include_package_data=True,
-    #license = "MIT",
+    install_requires=["redis-limpyd", "redis-limpyd-extensions", "python-dateutil", "setproctitle"],
+    license = "DO WHAT THE FUCK YOU WANT TO PUBLIC LICENSE",
     platforms=["any"],
     zip_safe=True,
+
+    entry_points = {
+        'console_scripts': [
+            'limpyd-jobs-worker = limpyd_jobs.scripts.worker:main',
+        ],
+    },
 
     long_description = long_description,
 

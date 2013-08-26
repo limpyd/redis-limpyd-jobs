@@ -4,8 +4,9 @@ redis-limpyd-jobs
 A queue/jobs system based on [redis-limpyd][] ([redis][] orm (sort of) in python)
 
 Github repository: <https://github.com/twidi/redis-limpyd-jobs>
+Pypi package: <https://pypi.python.org/pypi/redis-limpyd-jobs>
 
-Note that you actually need the [develop branch of the twidi's fork of redis-limpyd][twidi-limpyd], and [redis-limpyd-extensions][]
+Note that you actually need the [redis-limpyd-extensions][] in addition to [redis-limpyd][] (both installed via pypi)
 
 ## How it works
 
@@ -690,9 +691,9 @@ def count_waiting_jobs(self)
 `count_waiting_jobs` returns the number of jobs in waiting state that can be run by this worker.
 
 
-### The limpyd-worker.py script
+### The worker.py script
 
-To help using `limpyd_jobs`, a executable python script is provided: `scripts/limpyd-worker.py`
+To help using `limpyd_jobs`, a executable python script is provided: `scripts/worker.py` (usable as `limpyd-jobs-worker`, in your path, when installed from the package)
 
 This script is highly configurable to help you launching workers without having to write a script or customize the one included.
 
@@ -707,8 +708,8 @@ This script is thinked to ease you as much as possible.
 Instead of explaining all arguments, see below the result of the `--help` command for this script:
 
 ```bash
-$ scripts/limpyd-worker.py  --help
-Usage: limpyd-worker.py [options]
+$ limpyd-jobs-worker  --help
+Usage: limpyd-jobs-worker [options]
 
 Run a worker using redis-limpyd-jobs
 
@@ -770,16 +771,16 @@ Except for `--pythonpath`, `--worker-config`, `--print-options`,`--dry-run`, `--
 So, if you use the default models, the default worker with its default options,to launch a worker to work on the queue `queue-name`, all you need to do is:
 
 ```
-scripts/limpyd-worder.py --name=queue-name
+limpyd-jobs-worker --name=queue-name
 ```
 
 We use the `setproctitle` module to display useful informations in the process name, to have stuff like this:
 
 ```
-limpyd-worker#1566090 [init] queue=foo
-limpyd-worker#1566090 [starting] queue=foo loop=0/1000 waiting-jobs=10
-limpyd-worker#1566090 [running] queue=foo loop=1/1000 waiting-jobs=9
-limpyd-worker#1566090 [terminated] queue=foo loop=10/1000 waiting-jobs=0
+limpyd-jobs-worker#1566090 [init] queue=foo
+limpyd-jobs-worker#1566090 [starting] queue=foo loop=0/1000 waiting-jobs=10
+limpyd-jobs-worker#1566090 [running] queue=foo loop=1/1000 waiting-jobs=9
+limpyd-jobs-worker#1566090 [terminated] queue=foo loop=10/1000 waiting-jobs=0
 ```
 
 You can disable it by passing the `--no-title` argument.
@@ -787,7 +788,7 @@ You can disable it by passing the `--no-title` argument.
 
 ## Final words
 
-- you can see a full example in `example.py`
+- you can see a full example in `example.py` (in the source, not in the installed package)
 - to use `limpyd_jobs` models on your own redis database instead of the default one (`localhost:6379:db=0`), simply use the `use_database` method of the main model:
 
     ```python
@@ -812,4 +813,3 @@ You can disable it by passing the `--no-title` argument.
 [redis-limpyd-extensions]: https://github.com/twidi/redis-limpyd-extensions
 [redis]: http://redis.io
 [redis-limpyd]: https://github.com/yohanboniface/redis-limpyd
-[twidi-limpyd]: https://github.com/twidi/redis-limpyd/tree/develop

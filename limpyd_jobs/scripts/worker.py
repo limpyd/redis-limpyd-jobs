@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+"A worker for redis-limpyd-jobs, to use on the command line"
 
 import sys
 import glob
@@ -89,7 +90,7 @@ class LaxOptionParser(OptionParser):
         return paths
 
 
-if __name__ == '__main__':
+def main():
     # first options needed for this script itself (the rest will be ignored for now)
     option_list = (
         make_option('--pythonpath', action='append',
@@ -126,3 +127,6 @@ if __name__ == '__main__':
         parser.print_lax_help()
         parser.lax_error('No WorkerConfig found. You need to use --pythonpath '
                          'and/or --worker-config: %s' % str(e))
+
+if __name__ == '__main__':
+    main()
