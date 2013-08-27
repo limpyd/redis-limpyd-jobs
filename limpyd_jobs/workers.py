@@ -275,8 +275,9 @@ class Worker(object):
                     self.set_status('running')
                     identifier, status = job.hmget('identifier', 'status')
                      # some cache, don't count on it on subclasses
-                    job._identifier = identifier
-                    job._status = status
+                    job._cached_identifier = identifier
+                    job._cached_status = status
+                    queue._cached_name = queue.name.hget()
 
                     if status != STATUSES.WAITING:
                         self.job_skipped(job, queue)
@@ -307,7 +308,7 @@ class Worker(object):
         """
         return {}
 
-    def job_error(self, job, queue, exception, message=None):
+    def job_error(self, job, queue, exception):
         """
         Called when an exception was raised during the execute call for a job.
         """
@@ -316,45 +317,63 @@ class Worker(object):
 
         if self.save_errors:
             additional_fields = self.additional_error_fields(job, queue, exception)
-            self.error_model.add_error(queue_name=queue.name.hget(),
-                                       identifier=job._identifier,
+            self.error_model.add_error(queue_name=queue._cached_name,
+                                       identifier=job._cached_identifier,
                                        error=exception,
                                        **additional_fields)
+        self.log(self.job_error_message(job, queue, exception), level='error')
 
-        if not message:
-            message = '[%s] error: %s' % (job._identifier, str(exception))
-        self.log(message, level='error')
+    def job_error_message(self, job, queue, exception):
+        """
+        Return the message to log when a job raised an error
+        """
+        return '[%s|%s] error: %s' % (queue._cached_name,
+                                      job._cached_identifier, str(exception))
 
-    def job_success(self, job, queue, job_result, message=None):
+    def job_success(self, job, queue, job_result):
         """
         Called just after an execute call was successful.
         job_result is the value returned by the callback, if any.
         """
         job.hmset(end=str(datetime.utcnow()), status=STATUSES.SUCCESS)
         queue.success.rpush(job.pk.get())
+        self.log(self.job_success_message(job, queue, job_result))
 
-        if not message:
-            message = '[%s] success, in %s' % (job._identifier, job.duration)
-        self.log(message)
+    def job_success_message(self, job, queue, job_result):
+        """
+        Return the message to log when a job is successful
+        """
+        return '[%s|%s] success, in %s' % (queue._cached_name,
+                                           job._cached_identifier, job.duration)
 
-    def job_started(self, job, queue, message=None):
+    def job_started(self, job, queue):
         """
         Called just before the execution of the job
         """
         job.hmset(start=str(datetime.utcnow()), status=STATUSES.RUNNING)
+        self.log(self.job_started_message(job, queue))
 
-        if not message:
-            message = '[%s] starting' % job._identifier
-        self.log(message)
+    def job_started_message(self, job, queue):
+        """
+        Return the message to log just befre the execution of the job
+        """
+        return '[%s|%s] starting' % (queue._cached_name, job._cached_identifier)
 
-    def job_skipped(self, job, queue, message=None):
+    def job_skipped(self, job, queue):
         """
         Called if a job can't be run: canceled, already running or done.
         """
-        if not message:
-            message = '[%s] job skipped (current status: %s)' % (
-                    STATUSES.by_value(job._status, 'UNKNOWN'), job._identifier)
-        self.log(message, level='warning')
+        self.log(self.job_skipped_message(job, queue), level='warning')
+
+    def job_skipped_message(self, job, queue):
+        """
+        Return the message to log when a job can't be run: canceled, already
+        running or done
+        """
+        return '[%s|%s] job skipped (current status: %s)' % (
+                queue._cached_name,
+                job._cached_identifier,
+                STATUSES.by_value(job._cached_status, 'UNKNOWN'))
 
 
 class WorkerConfig(object):

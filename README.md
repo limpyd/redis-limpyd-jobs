@@ -582,52 +582,92 @@ This method is called just before exiting the `run` method. By default it does n
 Signature:
 
 ```python
-def job_skipped(self, job, queue, message=None)
+def job_skipped(self, job, queue)
 ```
 Returns nothing
 
 When a job is fetched in the `run` method, its status is fetched. If this status is not `STATUSES.WAITING`, the `job_skipped` method is called, with two main arguments: the job and the queue in which it was found.
 
-The `message` argument is here only to help you override the method to only change the message computed, letting the default method doing its internal stuff which in fact is nothing else for `job_skipped` than logging this message.
+The only thing done is to log the message returned by the `job_skipped_message` method.
+
+##### `job_skipped_message`
+
+Signature:
+
+```python
+def job_skipped_message(self, job, queue)
+```
+
+Returns a string to be logged in `job_skipped`.
 
 ##### `job_started`
 
 Signature:
 
 ```python
-def job_started(self, job, queue, message=None)
+def job_started(self, job, queue)
 ```
 Returns nothing
 
 When the job is fetched and its status verified (it must be `STATUSES.WAITING`), the `job_started` method is called, just before the callback (or the `execute` method if no callback is defined), with the job and the queue in which it was found.
 
-The `message` argument is here only to help you override the method to only change the message computed, letting the default method doing its internal stuff which is simply updating the `start` and `status` fields of the job, then logging the message.
+This method updates the `start` and `status` fields of the job, then log the message returned by `job_started_message`.
+
+##### `job_started_message`
+
+Signature:
+
+```python
+def job_started_message(self, job, queue)
+```
+
+Returns a string to be logged in `job_started`.
 
 ##### `job_success`
 
 Signature:
 
 ```python
-def job_success(self, job, queue, job_result, message=None)
+def job_success(self, job, queue, job_result)
 
 ```
 Returns nothing
 
 When the callback (or the `execute` method) is finished, without having raised any exception, the job is considered successful, and the `job_success` method is called, with the job and the queue in which it was found, and the return value of the callback method.
 
-The `message` argument is here only to help you override the method to only change the message computed, letting the default method doing its internal stuff which is updating the `start` and `status` fields of the job, moving the job into the `success` list of the queue and then logging the message.
+This method updates the `end` and `status` fields of the job, moves the job into the `success` list of the queue, then log the message returned by `job_success_message`.
+
+##### `job_success_message`
+
+Signature:
+
+```python
+def job_success_message(self, job, queue, job_result)
+```
+
+Returns a string to be logged in `job_success`.
 
 ##### `job_error`
 
 Signature:
 ```python
-def job_error(self, job, queue, exception, message=None)
+def job_error(self, job, queue, exception)
 ```
 Returns nothing
 
 When the callback (or the `execute` method) is terminated by raising an exception, and the `job_error` method is called, with the job and the queue in which it was found, and the raised exception.
 
-The `message` argument is here only to help you override the method to only change the message computed, letting the default method doing its internal stuff which is updating the `start` and `status` fields of the job, moving the job into the `error` list of the queue, adding a new error object (if `save_errors` is True) and then logging the message.
+This method updates the `end` and `status` fields of the job, moves the job into the `error` list of the queue, adds a new error object (if `save_errors` is True), then log the message returned by `job_error_message`.
+
+##### `job_error_message`
+
+Signature:
+
+```python
+def job_error_message(self, job, queue, exception)
+```
+
+Returns a string to be logged in `job_error`.
 
 ##### `additional_error_fields`
 

@@ -134,7 +134,7 @@ class FullNameWorker(Worker):
 
         return _must_stop
 
-    def job_success(self, job, queue, job_result, message=None):
+    def job_success(self, job, queue, job_result):
         """
         Update the queue's dates and number of jobs managed, and save into the
         job the result received by the callback.
@@ -157,7 +157,7 @@ class FullNameWorker(Worker):
         job.result.set(job_result)
 
         # keep the default stuff at the end
-        super(FullNameWorker, self).job_success(job, queue, job_result, message)
+        super(FullNameWorker, self).job_success(job, queue, job_result)
 
     def execute(self, job, queue):
         """

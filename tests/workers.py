@@ -314,8 +314,8 @@ class WorkerRunTest(LimpydBaseTest):
             def execute(self, job, queue):
                 return 42
 
-            def job_success(self, job, queue, job_result, message=None):
-                super(TestWorker, self).job_success(job, queue, job_result, message)
+            def job_success(self, job, queue, job_result):
+                super(TestWorker, self).job_success(job, queue, job_result)
                 self.passed = job_result
 
         job = Job.add_job(identifier='job:1', queue_name='test')
@@ -433,7 +433,7 @@ class WorkerRunTest(LimpydBaseTest):
 
             def job_skipped(self, job, queue):
                 super(TestWorker, self).job_skipped(job, queue)
-                self.passed = job._status
+                self.passed = job._cached_status
 
         for status in ('CANCELED', 'RUNNING', 'SUCCESS', 'ERROR'):
             job = Job.add_job(identifier='job:1', queue_name='test')
