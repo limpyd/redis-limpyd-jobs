@@ -2,7 +2,7 @@ import logging
 import signal
 import sys
 import os.path
-from datetime import datetime
+from datetime import datetime, timedelta
 from optparse import make_option, OptionParser
 
 from setproctitle import setproctitle
@@ -35,6 +35,9 @@ class Worker(object):
     max_loops = 1000
     # max delay for blpop
     timeout = 30
+    # minimum time in seconds between the update of keys to fetch
+    fetch_priorities_delay = 25  # by default < timeout to be sure to
+                                 # fetch them after a timeout occured
 
     # we want to intercept SIGTERM and SIGINT signals, to stop gracefuly
     terminate_gracefuly = True
@@ -42,7 +45,8 @@ class Worker(object):
     def __init__(self, name=None, callback=None,
                  queue_model=None, job_model=None, error_model=None,
                  logger_base_name=None, logger_level=None, save_errors=None,
-                 max_loops=None, terminate_gracefuly=None, timeout=None):
+                 max_loops=None, terminate_gracefuly=None, timeout=None,
+                 fetch_priorities_delay=None):
         """
         Create the worker by saving arguments, doing some checks, preparing
         logger and signals management, and getting queues keys.
@@ -74,6 +78,8 @@ class Worker(object):
             self.save_errors = save_errors
         if timeout is not None:
             self.timeout = timeout
+        if fetch_priorities_delay is not None:
+            self.fetch_priorities_delay = fetch_priorities_delay
 
         # prepare logging
         if logger_base_name is not None:
@@ -91,6 +97,7 @@ class Worker(object):
         self.status = None  # is set to None/waiting/running by the worker
         self.end_signal_caught = False  # internaly set to True if end signal caught
         self.update_callbacks = []  # callbacks to call when status is updated
+        self.last_fetch_priorities = None  # last time the keys to fetch were updated
 
     @staticmethod
     def _assert_correct_model(model_to_check, model_reference, obj_name):
@@ -221,9 +228,10 @@ class Worker(object):
 
     def update_keys(self):
         """
-        Update the redis keys to listen for new jobs.
+        Update the redis keys to listen for new jobs priorities.
         """
         self.keys = self.queue_model.get_keys(self.name)
+        self.last_update_keys = datetime.utcnow()
 
     def count_waiting_jobs(self):
         """
@@ -258,8 +266,12 @@ class Worker(object):
 
         self.run_started()
 
+        fetch_priorities_delay = timedelta(seconds=self.fetch_priorities_delay)
+
         while not self.must_stop():
             self.set_status('waiting')
+            if self.last_update_keys + fetch_priorities_delay < datetime.utcnow():
+                self.update_keys()
             try:
                 queue_and_job = self.wait_for_job()
                 if queue_and_job is None:
@@ -438,6 +450,9 @@ class WorkerConfig(object):
         make_option('--timeout', type='int', dest='timeout',
             help='Max delay (seconds) to wait for a redis BLPOP call (0 for no timeout), e.g. --timeout=30'),
 
+        make_option('--fetch-priorities-delay', type='int', dest='fetch_priorities_delay',
+            help='Min delay (seconds) to wait before fetching new priority queues, e.g. --fetch-priorities-delay=30'),
+
         make_option('--database', action='store', dest='database',
             help='Redis database to use (host:port:db), e.g. --database=localhost:6379:15'),
 
@@ -455,7 +470,8 @@ class WorkerConfig(object):
 
     worker_options = ('name', 'job_model', 'queue_model', 'error_model',
                       'callback', 'logger_base_name', 'logger_level',
-                      'save_errors', 'max_loops', 'terminate_gracefuly', 'timeout')
+                      'save_errors', 'max_loops', 'terminate_gracefuly',
+                      'timeout', 'fetch_priorities_delay')
 
     @staticmethod
     def _import_module(module_uri):
@@ -554,6 +570,9 @@ class WorkerConfig(object):
 
         if self.options.timeout is not None and self.options.timeout < 0:
             self.parser.error('The timeout argument (%s) must be a positive integer (including 0)' % self.options.timeout)
+
+        if self.options.fetch_priorities_delay is not None and self.options.fetch_priorities_delay <= 0:
+            self.parser.error('The fetch_priorities_delay argument (%s) must be a positive integer' % self.options.fetch_priorities_delay)
 
         self.database_config = None
         if self.options.database:

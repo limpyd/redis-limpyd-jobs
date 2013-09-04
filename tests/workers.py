@@ -53,6 +53,7 @@ class WorkerArgumentsTest(LimpydBaseTest):
         self.assertEqual(worker.save_errors, True)
         self.assertEqual(worker.terminate_gracefuly, True)
         self.assertEqual(worker.timeout, 30)
+        self.assertEqual(worker.fetch_priorities_delay, 25)
 
     def test_worker_arguements_should_be_saved(self):
         def callback(job, queue):
@@ -69,7 +70,8 @@ class WorkerArgumentsTest(LimpydBaseTest):
                     max_loops=500,
                     terminate_gracefuly=False,
                     save_errors=False,
-                    timeout=20
+                    timeout=20,
+                    fetch_priorities_delay=15,
                 )
 
         self.assertEqual(worker.name, 'test')
@@ -83,6 +85,7 @@ class WorkerArgumentsTest(LimpydBaseTest):
         self.assertEqual(worker.save_errors, False)
         self.assertEqual(worker.terminate_gracefuly, False)
         self.assertEqual(worker.timeout, 20)
+        self.assertEqual(worker.fetch_priorities_delay, 15)
 
     def test_worker_subclass_attributes_should_be_used(self):
         class TestWorker(Worker):
@@ -96,6 +99,7 @@ class WorkerArgumentsTest(LimpydBaseTest):
             terminate_gracefuly = False
             save_errors = False
             timeout = 20
+            fetch_priorities_delay = 15
 
         worker = TestWorker()
 
@@ -109,6 +113,7 @@ class WorkerArgumentsTest(LimpydBaseTest):
         self.assertEqual(worker.save_errors, False)
         self.assertEqual(worker.terminate_gracefuly, False)
         self.assertEqual(worker.timeout, 20)
+        self.assertEqual(worker.fetch_priorities_delay, 15)
 
     def test_worker_subclass_attributes_should_be_overriden_by_arguments(self):
         class OtherTestQueue(Queue):
@@ -131,6 +136,7 @@ class WorkerArgumentsTest(LimpydBaseTest):
             terminate_gracefuly = False
             save_errors = False
             timeout = 20
+            fetch_priorities_delay = 15
 
         worker = Worker(
                     name='testfoo',
@@ -142,7 +148,8 @@ class WorkerArgumentsTest(LimpydBaseTest):
                     max_loops=200,
                     terminate_gracefuly=True,
                     save_errors=True,
-                    timeout = 40
+                    timeout = 40,
+                    fetch_priorities_delay = 10
                 )
 
         self.assertEqual(worker.name, 'testfoo')
@@ -155,6 +162,7 @@ class WorkerArgumentsTest(LimpydBaseTest):
         self.assertEqual(worker.save_errors, True)
         self.assertEqual(worker.terminate_gracefuly, True)
         self.assertEqual(worker.timeout, 40)
+        self.assertEqual(worker.fetch_priorities_delay, 10)
 
     def test_bad_model_should_be_rejected(self):
         class FooBar(object):
@@ -280,7 +288,7 @@ class WorkerRunTest(LimpydBaseTest):
         class TestWorker(Worker):
             passed = False
 
-            def execute():
+            def execute(self, job, queue):
                 pass
 
             def job_started(self, job, queue):
@@ -452,6 +460,45 @@ class WorkerRunTest(LimpydBaseTest):
         worker = Worker(name='test', max_loops=1)
         worker.run()
         self.assertEqual(worker.num_loops, 0)
+
+    def test_queues_with_new_priorities_should_be_added_after_fetch_priorities_delay(self):
+
+        class TestWorker(Worker):
+            timeout = 1
+            max_loops = 2
+            fetch_priorities_delay = 0.5
+
+            def execute(self, job, queue):
+                pass
+
+        # add a first job
+        Job.add_job(identifier='job:1', queue_name='test')
+        worker = TestWorker('test')
+
+        class Thread(threading.Thread):
+            def run(self):
+                worker.run()
+
+        # launch the worker
+        thread = Thread()
+        thread.start()
+        time.sleep(0.2)
+
+        # we should have one job run within one queue
+        queue_0 = Queue.get_queue('test', 0)
+        self.assertEqual(worker.keys, [queue_0.waiting.key])
+        self.assertEqual(worker.num_loops, 1)
+
+        # add a second job with another priority to create a new queue
+        Job.add_job(identifier='job:2', queue_name='test', priority=1)
+
+        # wait for the worker to fetch new keys (at least "timeout" seconds)
+        time.sleep(2)
+
+        # now we should have two jobs run within two queues
+        queue_1 = Queue.get_queue('test', 1)
+        self.assertEqual(worker.keys, [queue_1.waiting.key, queue_0.waiting.key])
+        self.assertEqual(worker.num_loops, 2)
 
     def test_blpop_timeout(self):
         class TestWorker(Worker):
@@ -634,6 +681,16 @@ class WorkerConfigArgumentsTest(WorkerConfigBaseTest):
 
         with self.assertSystemExit(in_stderr="must be a positive integer"):
             WorkerConfig(self.mkargs('--timeout=-1'))
+
+    def test_fetch_priorities_delay_argument(self):
+        conf = WorkerConfig(self.mkargs('--fetch-priorities-delay=10'))
+        self.assertEqual(conf.options.fetch_priorities_delay, 10)
+
+        with self.assertSystemExit(in_stderr="option --fetch-priorities-delay: invalid integer value: 'none'"):
+            WorkerConfig(self.mkargs('--fetch-priorities-delay=none'))
+
+        with self.assertSystemExit(in_stderr="must be a positive integer"):
+            WorkerConfig(self.mkargs('--fetch-priorities-delay=-1'))
 
     def test_database_argument(self):
         conf = WorkerConfig(self.mkargs('--database=localhost:6379:15'))

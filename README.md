@@ -377,6 +377,15 @@ The timeout is used as parameter to the `blpop` redis command we use to fetch jo
 It's better to always set a timeout, to reenter the main loop and call the `must_stop` method to see if the worker must exit.
 Note that the number of loops is not updated in this case, so a little `timeout` won't alter the number of loops defined by `max_loops`.
 
+##### `fetch_priorities_delay`
+
+The fetch_priorities_delay is the delay between two fetches of the list of priorities for the current worker.
+
+If a job was added with a priority that did not exist when the worker run was started, it will not be taken into account until this delay expires.
+
+Note that if this delay is, say, 5 seconds (it's 30 by default), and the `timeout` parameter is 30, you may wait 30 seconds before the new priority fetch because if there is no jobs in the priority queues actually managed by the worker, the time is in the redis hands.
+
+
 #### Other worker's attributes
 
 In case on subclassing, you can need these attributes, created and defined during the use of the worker:
@@ -420,7 +429,7 @@ As said before, the `Worker` class in spit in many little methods, to ease subcl
 
 ##### `__init__`
 
-Signature:     
+Signature:
 
 ```python
     def __init__(self, name=None, callback=None,
@@ -539,8 +548,8 @@ Returns nothing
 
 Calling this method updates the internal `keys` attributes, which contains redis keys of the waiting lists of all queues listened by the worker (the ones with the same name).
 
-It's actually called at the beginning of the `run` method.
-Note that if a queue with a specific priority doesn't exist when this method is called, but later, by adding a job with `add_job`, the worker will ignore it unless this `update_keys` method was called again.
+It's actually called at the beginning of the `run` method, and at intervals depending on `fetch_priorities_delay`.
+Note that if a queue with a specific priority doesn't exist when this method is called, but later, by adding a job with `add_job`, the worker will ignore it unless this `update_keys` method was called again (programmatically or by waiting at least `fetch_priorities_delay` seconds)
 
 ##### `run`
 
@@ -798,6 +807,10 @@ Options:
                         stop gracefuly, e.g. --no-terminate-gracefuly
   --timeout=TIMEOUT     Max delay (seconds) to wait for a redis BLPOP call (0
                         for no timeout), e.g. --timeout=30
+  --fetch-priorities-delay=FETCH_PRIORITIES_DELAY
+                        Min delay (seconds) to wait before fetching new
+                        priority queues (>= timeout), e.g.
+                        --fetch-priorities-delay=30
   --database=DATABASE   Redis database to use (host:port:db), e.g.
                         --database=localhost:6379:15
   --no-title            Do not update the title of the worker's process, e.g.
