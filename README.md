@@ -458,6 +458,18 @@ It's called in the constructor if `terminate_gracefully` is True. It plugs the S
 
 You can override it to catch more signals or do some checked before plugging them to the `catch_end_signal` method.
 
+##### `stop_handling_end_signal`
+
+Signature:
+
+```python
+    def stop_handling_end_signal(self)
+```
+Returns nothing.
+
+It's called when at the end of the `run` method, as we don't need to catch the SIGINT and SIGTERM signals anymore.
+It's useful when launching a worker in a python shell to return the signals to the shell. Not in a script because the script is finished when the `run` method exits.
+
 ##### `set_logger`
 
 Signature:

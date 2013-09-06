@@ -115,8 +115,21 @@ class Worker(object):
         """
         Catch some system signals to handle them internaly
         """
-        signal.signal(signal.SIGTERM, self.catch_end_signal)
-        signal.signal(signal.SIGINT, self.catch_end_signal)
+        try:
+            signal.signal(signal.SIGTERM, self.catch_end_signal)
+            signal.signal(signal.SIGINT, self.catch_end_signal)
+        except ValueError:
+            self.log('Signals cannot be caught in a Thread', level='warning')
+
+    def stop_handling_end_signal(self):
+        """
+        Stop handling the SIGINT and SIGTERM signals
+        """
+        try:
+            signal.signal(signal.SIGTERM, signal.SIG_DFL)
+            signal.signal(signal.SIGINT, signal.SIG_DFL)
+        except ValueError:
+            self.log('Signals cannot be caught in a Thread', level='warning')
 
     def set_logger(self):
         """
@@ -206,6 +219,10 @@ class Worker(object):
         When a SIGINT/SIGTERM signal is caught, this method is called, asking
         for the worker to terminate as soon as possible.
         """
+        if self.end_signal_caught:
+            self.log('Previous signal caught, will end soon')
+            return
+
         signal_name = dict((getattr(signal, n), n) for n in dir(signal)
                         if n.startswith('SIG') and '_' not in n).get(signum, signum)
 
@@ -279,6 +296,8 @@ class Worker(object):
 
         self.set_status('terminated')
         self.run_ended()
+        if self.terminate_gracefuly:
+            self.stop_handling_end_signal()
 
     def _main_loop(self):
         """
