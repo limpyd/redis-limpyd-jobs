@@ -1,6 +1,7 @@
 import logging
 import signal
 import sys
+import traceback
 import os.path
 from datetime import datetime, timedelta
 from time import sleep
@@ -31,6 +32,7 @@ class Worker(object):
     logger_base_name = LOGGER_BASE_NAME + '.%s'  # will use self.name
     logger_level = logging.ERROR
     save_errors = True
+    save_tracebacks = True
 
     # maximum number of loops to run
     max_loops = 1000
@@ -46,8 +48,8 @@ class Worker(object):
     def __init__(self, name=None, callback=None,
                  queue_model=None, job_model=None, error_model=None,
                  logger_base_name=None, logger_level=None, save_errors=None,
-                 max_loops=None, terminate_gracefuly=None, timeout=None,
-                 fetch_priorities_delay=None):
+                 save_tracebacks=None, max_loops=None, terminate_gracefuly=None,
+                 timeout=None, fetch_priorities_delay=None):
         """
         Create the worker by saving arguments, doing some checks, preparing
         logger and signals management, and getting queues keys.
@@ -77,6 +79,8 @@ class Worker(object):
             self.terminate_gracefuly = terminate_gracefuly
         if save_errors is not None:
             self.save_errors = save_errors
+        if save_tracebacks is not None:
+            self.save_tracebacks = save_tracebacks
         if timeout is not None:
             self.timeout = timeout
         if fetch_priorities_delay is not None:
@@ -336,7 +340,10 @@ class Worker(object):
                             self.job_started(job, queue)
                             job_result = self.callback(job, queue)
                         except Exception, e:
-                            self.job_error(job, queue, e)
+                            trace = None
+                            if self.save_tracebacks:
+                                trace = traceback.format_exc()
+                            self.job_error(job, queue, e, trace)
                         else:
                             self.job_success(job, queue, job_result)
                 except Exception, e:
@@ -355,7 +362,7 @@ class Worker(object):
         """
         return {}
 
-    def job_error(self, job, queue, exception):
+    def job_error(self, job, queue, exception, trace=None):
         """
         Called when an exception was raised during the execute call for a job.
         """
@@ -367,10 +374,11 @@ class Worker(object):
             self.error_model.add_error(queue_name=queue._cached_name,
                                        identifier=job._cached_identifier,
                                        error=exception,
+                                       trace=trace,
                                        **additional_fields)
-        self.log(self.job_error_message(job, queue, exception), level='error')
+        self.log(self.job_error_message(job, queue, exception, trace), level='error')
 
-    def job_error_message(self, job, queue, exception):
+    def job_error_message(self, job, queue, exception, trace=None):
         """
         Return the message to log when a job raised an error
         """
@@ -473,6 +481,10 @@ class WorkerConfig(object):
             help='Save job errors in the Error model, e.g. --save-errors'),
         make_option('--no-save-errors', action='store_false', dest='save_errors',
             help='Do not save job errors in the Error model, e.g. --no-save-errors'),
+        make_option('--save-tracebacks', action='store_true', dest='save_tracebacks',
+            help='Save exception tracebacks on job error in the Error model, e.g. --save-tracebacks'),
+        make_option('--no-save-tracebacks', action='store_false', dest='save_tracebacks',
+            help='Do not save exception tracebacks on job error in the Error model, e.g. --no-save-tracebacks'),
 
         make_option('--max-loops', type='int', dest='max_loops',
             help='Max number of jobs to run, e.g. --max-loops=100'),
@@ -505,8 +517,8 @@ class WorkerConfig(object):
 
     worker_options = ('name', 'job_model', 'queue_model', 'error_model',
                       'callback', 'logger_base_name', 'logger_level',
-                      'save_errors', 'max_loops', 'terminate_gracefuly',
-                      'timeout', 'fetch_priorities_delay')
+                      'save_errors', 'save_tracebacks', 'max_loops',
+                      'terminate_gracefuly', 'timeout', 'fetch_priorities_delay')
 
     @staticmethod
     def _import_module(module_uri):

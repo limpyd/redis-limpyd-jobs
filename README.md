@@ -297,6 +297,10 @@ A string (`HashableField`, indexed) to store the value of the `code` attribute o
 
 A string (`HashableField`) to store the string representation of the originally raised exception.
 
+##### `traceback`
+
+A string (`HashableField`) to store the string representation of the traceback of the originally raised exception.
+
 #### Error properties and methods
 
 There is only one property on the `Error` model:
@@ -355,6 +359,10 @@ It's the level set for the logger created with the name defined in `logger_base_
 ##### `save_errors`
 
 A boolean, default to True, to indicate if we have to save errors in the `Error` model (or the one defined in `error_model`) when the execution of the job is not successful.
+
+##### `save_tracebacks`
+
+A boolean, default to True, to indicate if we have to save the tracebacks of exceptions in the `Error` model (or the one defined in `error_model`) when the execution of the job is not successful.
 
 ##### `max_loops`
 
@@ -435,7 +443,7 @@ Signature:
     def __init__(self, name=None, callback=None,
                  queue_model=None, job_model=None, error_model=None,
                  logger_base_name=None, logger_level=None, save_errors=None,
-                 max_loops=None, terminate_gracefuly=None):
+                 save_tracebacks=None, max_loops=None, terminate_gracefuly=None):
 ```
 Returns nothing.
 
@@ -672,7 +680,7 @@ Returns a string to be logged in `job_success`.
 
 Signature:
 ```python
-def job_error(self, job, queue, exception)
+def job_error(self, job, queue, exception, trace=None)
 ```
 Returns nothing
 
@@ -791,6 +799,10 @@ Options:
   --save-errors         Save job errors in the Error model, e.g. --save-errors
   --no-save-errors      Do not save job errors in the Error model, e.g. --no-
                         save-errors
+  --save-tracebacks     Save exception tracebacks on job error in the Error
+                        model, e.g. --save-tracebacks
+  --no-save-tracebacks  Do not save exception tracebacks on job error in the
+                        Error model, e.g. --no-save-tracebacks
   --max-loops=MAX_LOOPS
                         Max number of jobs to run, e.g. --max-loops=100
   --terminate-gracefuly

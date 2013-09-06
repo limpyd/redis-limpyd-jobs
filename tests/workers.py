@@ -345,6 +345,7 @@ class WorkerRunTest(LimpydBaseTest):
         def callback(job, queue):
             raise ExceptionWithCode('foobar', 42)
 
+        # test exception because no callback
         job1 = Job.add_job(identifier='job:1', queue_name='test')
         queue = Queue.get_queue(name='test')
         worker = Worker(name='test', max_loops=1)  # no callback
@@ -356,9 +357,10 @@ class WorkerRunTest(LimpydBaseTest):
         error = Error.get(identifier='job:1')
         self.assertEqual(error.message.hget(), 'You must implement your own action')
         self.assertEqual(error.code.hget(), None)
+        self.assertIn('NotImplementedError: You must implement your own action', error.traceback.hget())
 
+        # test exception caused by the callback
         job2 = Job.add_job(identifier='job:2', queue_name='test')
-        queue = Queue.get_queue(name='test')
         worker = Worker(name='test', max_loops=1, callback=callback)  # callback with exception
         worker.run()
 
@@ -368,6 +370,17 @@ class WorkerRunTest(LimpydBaseTest):
         error = Error.get(identifier='job:2')
         self.assertEqual(error.message.hget(), 'foobar')
         self.assertEqual(error.code.hget(), '42')
+        self.assertIn('ExceptionWithCode: foobar', error.traceback.hget())
+
+        # test exception caused by the callback, without storing the traceback
+        Job.add_job(identifier='job:3', queue_name='test')
+        worker = Worker(name='test', max_loops=1, callback=callback, save_tracebacks=False)  # callback with exception
+        worker.run()
+
+        error = Error.get(identifier='job:3')
+        self.assertEqual(error.message.hget(), 'foobar')
+        self.assertEqual(error.code.hget(), '42')
+        self.assertIsNone(error.traceback.hget())
 
     def test_error_model_with_additional_fields(self):
         class TestError(Error):
@@ -672,6 +685,16 @@ class WorkerConfigArgumentsTest(WorkerConfigBaseTest):
 
         conf = WorkerConfig(self.mkargs('--no-save-errors'))
         self.assertFalse(conf.options.save_errors)
+
+    def test_save_tracebacks_arguments(self):
+        conf = WorkerConfig(self.mkargs())
+        self.assertIsNone(conf.options.save_tracebacks)
+
+        conf = WorkerConfig(self.mkargs('--save-tracebacks'))
+        self.assertTrue(conf.options.save_tracebacks)
+
+        conf = WorkerConfig(self.mkargs('--no-save-tracebacks'))
+        self.assertFalse(conf.options.save_tracebacks)
 
     def test_max_loops_argument(self):
         conf = WorkerConfig(self.mkargs('--max-loops=100'))
