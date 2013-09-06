@@ -389,7 +389,7 @@ class WorkerRunTest(LimpydBaseTest):
         class TestWorker(Worker):
             error_model = TestError
 
-            def additional_error_fields(self, job, queue, exception):
+            def additional_error_fields(self, job, queue, exception, trace=None):
                 return {
                     'foo': 'Error on queue %s for job %s' % (
                         job.pk.get(), queue.pk.get()

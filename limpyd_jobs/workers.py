@@ -356,7 +356,7 @@ class Worker(object):
         """
         self.log('Run terminated, with %d loops.' % self.num_loops)
 
-    def additional_error_fields(self, job, queue, exception):
+    def additional_error_fields(self, job, queue, exception, trace=None):
         """
         Return a dict with additional fields to set to a new Error subclass object
         """
