@@ -396,7 +396,7 @@ A list of keys of queues waiting lists, which are listened by the worker for new
 
 ##### `status`
 
-The current status of the worker. `None` by default until the `run` method is called. Then it's set to `"waiting"` while the worker waits for new jobs. When a job is fetched, the status is set to `"running"`. And finally, when the loop is over, it's set to `"terminated"`. 
+The current status of the worker. `None` by default until the `run` method is called, after what it's set to `"starting"` while getting for an available queue. Then it's set to `"waiting"` while the worker waits for new jobs. When a job is fetched, the status is set to `"running"`. And finally, when the loop is over, it's set to `"terminated"`. 
 
 If the status is not `None`, the `run` method cannot be called.
 

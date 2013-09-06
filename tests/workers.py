@@ -426,8 +426,12 @@ class WorkerRunTest(LimpydBaseTest):
 
     def test_a_worker_should_run_only_one_time(self):
 
+        Job.add_job('job:1', 'test')
+        Job.add_job('job:2', 'test')
         worker = Worker('test', max_loops=2)
         worker.run()
+
+        Job.add_job('job:3', 'test')
 
         with self.assertRaises(ImplementationError):
             worker.run()
@@ -456,10 +460,27 @@ class WorkerRunTest(LimpydBaseTest):
             self.assertEqual(queue.errors.llen(), 0)
             self.assertEqual(job.status.hget(), STATUSES[status])
 
-    def test_worker_without_queues_should_stop(self):
-        worker = Worker(name='test', max_loops=1)
-        worker.run()
-        self.assertEqual(worker.num_loops, 0)
+    def test_worker_without_queues_should_wait_one_available(self):
+        worker = Worker(name='test', max_loops=1, fetch_priorities_delay=1)
+
+        class Thread(threading.Thread):
+            def run(self):
+                worker.run()
+
+        # launch the worker
+        thread = Thread()
+        thread.start()
+        time.sleep(0.2)
+
+        # still waiting for a queue
+        self.assertEqual(worker.status, 'starting')
+
+        # add a job and wait it's executed
+        Job.add_job(identifier='job:1', queue_name='test')
+        time.sleep(1)
+
+        # should have done a job
+        self.assertEqual(worker.num_loops, 1)
 
     def test_queues_with_new_priorities_should_be_added_after_fetch_priorities_delay(self):
 

@@ -3,6 +3,7 @@ import signal
 import sys
 import os.path
 from datetime import datetime, timedelta
+from time import sleep
 from optparse import make_option, OptionParser
 
 from setproctitle import setproctitle
@@ -258,11 +259,14 @@ class Worker(object):
 
         self.set_status('starting')
 
+        # get keys or wait for queues available if no ones are yet
         self.update_keys()
         if not self.keys:
-            self.log('No queues with the name %s.' % self.name, level='error')
-            self.set_status('aborted')
-            return
+            self.log('No queues yet with the name %s.' % self.name, level='warning')
+            while not self.keys:
+                self.update_keys()
+                if not self.keys:
+                    sleep(self.fetch_priorities_delay)
 
         self.run_started()
 
