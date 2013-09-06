@@ -23,7 +23,7 @@ def get_infos():
     raise RuntimeError('No infos found.')
 
 
-long_description = codecs.open(os.path.join(basedir, 'README.md'), "r", "utf-8").read()
+long_description = codecs.open(os.path.join(basedir, 'README.rst'), "r", "utf-8").read()
 infos = get_infos()
 
 setup(
