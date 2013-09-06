@@ -97,8 +97,9 @@ class Worker(object):
         self.end_forced = False  # set it to True in "execute" to force stop just after
         self.status = None  # is set to None/waiting/running by the worker
         self.end_signal_caught = False  # internaly set to True if end signal caught
-        self.update_callbacks = []  # callbacks to call when status is updated
         self.last_fetch_priorities = None  # last time the keys to fetch were updated
+
+        self._update_status_callbacks = []  # callbacks to call when status is updated
 
     @staticmethod
     def _assert_correct_model(model_to_check, model_reference, obj_name):
@@ -172,20 +173,20 @@ class Worker(object):
         Save the new status and call all defined callbacks
         """
         self.status = status
-        for callback in self.update_callbacks:
+        for callback in self._update_status_callbacks:
             callback(self)
 
-    def add_update_callback(self, callback):
+    def _add_update_status_callback(self, callback):
         """
         Add a callback to call when the status is updated
         """
-        self.update_callbacks.append(callback)
+        self._update_status_callbacks.append(callback)
 
-    def remove_update_callback(self, callback):
+    def _remove_update_status_callback(self, callback):
         """
         Remove a callback from ones set to be called when the status is updated
         """
-        self.update_callbacks.remove(callback)
+        self._update_status_callbacks.remove(callback)
 
     def wait_for_job(self):
         """
@@ -703,7 +704,7 @@ class WorkerConfig(object):
         worker_options = self.prepare_worker_options()
         self.worker = self.options.worker_class(**worker_options)
         if self.update_title:
-            self.worker.add_update_callback(self.update_proc_title)
+            self.worker._add_update_status_callback(self.update_proc_title)
             self.update_proc_title()
 
         if not self.worker.logger.handlers:

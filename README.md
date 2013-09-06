@@ -722,25 +722,7 @@ def set_status(self, status)
 ```
 Returns nothing
 
-`set_status` simply update the worker's status and then call all callbacks added by `add_update_callback`.
-
-##### `add_update_callback`
-
-Signature:
-```python
-def add_update_callback(self, callback)
-```
-
-`add_update_callback` add a callback to execute when `set_status` is called.
-
-##### ``
-
-Signature:
-```python
-def remove_update_callback(self, callback)
-```
-
-`remove_update_callback` remove a callback previously added by `add_update_callback`.
+`set_status` simply update the worker's status.
 
 ##### `count_waiting_jobs`
 
