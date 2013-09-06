@@ -213,8 +213,9 @@ class Worker(object):
             self.log('Catched %s signal: stopping after current job' % signal_name,
                      level='critical')
         else:
-            self.log('Catched %s signal: stopping right now' % signal_name,
-                     level='critical')
+            delay = self.timeout if self.status == 'waiting' else self.fetch_priorities_delay
+            self.log('Catched %s signal: stopping in max %d seconds' % (
+                     signal_name, delay), level='critical')
 
         self.end_signal_caught = self.end_forced = True
 
@@ -259,17 +260,30 @@ class Worker(object):
 
         self.set_status('starting')
 
+        must_stop = False
+
         # get keys or wait for queues available if no ones are yet
         self.update_keys()
         if not self.keys:
             self.log('No queues yet with the name %s.' % self.name, level='warning')
             while not self.keys:
+                sleep(self.fetch_priorities_delay)
+                must_stop = self.must_stop()
+                if must_stop:
+                    break
                 self.update_keys()
-                if not self.keys:
-                    sleep(self.fetch_priorities_delay)
 
-        self.run_started()
+        if not must_stop:
+            self.run_started()
+            self._main_loop()
 
+        self.set_status('terminated')
+        self.run_ended()
+
+    def _main_loop(self):
+        """
+        Run jobs until must_stop returns True
+        """
         fetch_priorities_delay = timedelta(seconds=self.fetch_priorities_delay)
 
         while not self.must_stop():
@@ -308,9 +322,6 @@ class Worker(object):
                 except Exception, e:
                     self.log('[%s] unexpected error: %s' % (identifier, str(e)),
                              level='error')
-
-        self.set_status('terminated')
-        self.run_ended()
 
     def run_ended(self):
         """
