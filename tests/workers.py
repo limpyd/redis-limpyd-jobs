@@ -7,11 +7,11 @@ from StringIO import StringIO
 
 from limpyd import __version__ as limpyd_version, fields
 from limpyd.contrib.database import PipelineDatabase
-from limpyd.exceptions import ImplementationError, DoesNotExist
+from limpyd.exceptions import DoesNotExist
 
 from limpyd_jobs.models import Queue, Job, Error
 from limpyd_jobs.workers import Worker, WorkerConfig
-from limpyd_jobs import STATUSES
+from limpyd_jobs import STATUSES, LimpydJobsException, ConfigurationException
 
 from .base import LimpydBaseTest
 
@@ -27,7 +27,7 @@ class WorkerArgumentsTest(LimpydBaseTest):
         namespace = 'WorkerArgumentsTest'
 
     def test_name_should_be_mandatory_if_not_defined_in_class(self):
-        with self.assertRaises(ImplementationError):
+        with self.assertRaises(ConfigurationException):
             Worker()
 
         worker = Worker(name='testfoo')
@@ -168,11 +168,11 @@ class WorkerArgumentsTest(LimpydBaseTest):
         class FooBar(object):
             pass
 
-        with self.assertRaises(ImplementationError):
+        with self.assertRaises(ConfigurationException):
             Worker('test', queue_model=FooBar)
-        with self.assertRaises(ImplementationError):
+        with self.assertRaises(ConfigurationException):
             Worker('test', job_model=FooBar)
-        with self.assertRaises(ImplementationError):
+        with self.assertRaises(ConfigurationException):
             Worker('test', error_model=FooBar)
 
 
@@ -446,7 +446,7 @@ class WorkerRunTest(LimpydBaseTest):
 
         Job.add_job('job:3', 'test')
 
-        with self.assertRaises(ImplementationError):
+        with self.assertRaises(LimpydJobsException):
             worker.run()
 
     def test_job_skipped_method_should_be_called(self):

@@ -542,7 +542,7 @@ described here together.
 
 The name of the worker, used to get all queues with that name. Default
 to ``None``, but if not set and not defined in a subclass, will raise an
-``ImplementationError``.
+``LimpydJobsException``.
 
 ``job_model``
 '''''''''''''

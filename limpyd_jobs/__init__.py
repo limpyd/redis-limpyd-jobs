@@ -36,6 +36,14 @@ STATUSES = STATUSES(
     )
 
 
+class LimpydJobsException(Exception):
+    pass
+
+
+class ConfigurationException(LimpydJobsException):
+    pass
+
+
 # the imports below are to ease import for users of the module
 from .models import Queue, Job, Error
 from .workers import Worker

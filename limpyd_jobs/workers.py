@@ -10,9 +10,9 @@ from optparse import make_option, OptionParser
 from setproctitle import setproctitle
 
 from limpyd import __version__ as limpyd_version
-from limpyd.exceptions import ImplementationError, DoesNotExist
+from limpyd.exceptions import DoesNotExist
 
-from limpyd_jobs import STATUSES
+from limpyd_jobs import STATUSES, LimpydJobsException, ConfigurationException
 from limpyd_jobs.models import Queue, Job, Error
 
 LOGGER_BASE_NAME = 'limpyd-jobs'
@@ -58,7 +58,7 @@ class Worker(object):
             self.name = name
 
         if not self.name:
-            raise ImplementationError('The name of the worker is not defined')
+            raise ConfigurationException('The name of the worker is not defined')
 
         # save and check models to use
         if queue_model is not None:
@@ -113,8 +113,8 @@ class Worker(object):
         to describe the name of the argument.
         """
         if not issubclass(model_to_check, model_reference):
-            raise ImplementationError('The %s model must be a subclass of %s' % (
-                                      obj_name, model_reference.__name__))
+            raise ConfigurationException('The %s model must be a subclass of %s'
+                                         % (obj_name, model_reference.__name__))
 
     def handle_end_signal(self):
         """
@@ -278,7 +278,7 @@ class Worker(object):
         # if status is not None, we already had a run !
         if self.status:
             self.set_status('aborted')
-            raise ImplementationError('This worker run is already terminated')
+            raise LimpydJobsException('This worker run is already terminated')
 
         self.set_status('starting')
 
