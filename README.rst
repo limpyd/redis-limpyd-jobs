@@ -691,6 +691,14 @@ Note that if this delay is, say, 5 seconds (it's 25 by default), and the
 priority fetch because if there is no jobs in the priority queues
 actually managed by the worker, the time is in the redis hands.
 
+``requeue_times``
+'''''''''''''''''
+
+It's the number of times a job will be requeued when its execution
+results in a failure. It will then be put back in the same queue.
+
+This attribute is 0 by default so by default a job won't be requeued.
+
 Other worker's attributes
 ^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -765,7 +773,7 @@ Signature:
                      queue_model=None, job_model=None, error_model=None,
                      logger_base_name=None, logger_level=None, save_errors=None,
                      save_tracebacks=None, max_loops=None, terminate_gracefuly=None,
-                     timeout=None, fetch_priorities_delay=None):
+                     timeout=None, fetch_priorities_delay=None, requeue_times=None):
 
 Returns nothing.
 
@@ -1109,7 +1117,8 @@ queue in which it was found, and the raised exception and, if
 This method updates the ``end`` and ``status`` fields of the job, moves
 the job into the ``error`` list of the queue, adds a new error object
 (if ``save_errors`` is ``True``), then log the message returned by
-``job_error_message``.
+``job_error_message``. If the ``requeue_times`` allows it, the job is
+requeued in the same queue with the same priority.
 
 ``job_error_message``
 '''''''''''''''''''''
@@ -1272,6 +1281,9 @@ Instead of explaining all arguments, see below the result of the
                             Min delay (seconds) to wait before fetching new
                             priority queues (>= timeout), e.g.
                             --fetch-priorities-delay=30
+      --requeue-times=REQUEUE_TIMES
+                            Number of time to requeue a failing job (default to
+                            0), e.g. --requeue-times=5
       --database=DATABASE   Redis database to use (host:port:db), e.g.
                             --database=localhost:6379:15
       --no-title            Do not update the title of the worker's process, e.g.

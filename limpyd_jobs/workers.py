@@ -39,8 +39,10 @@ class Worker(object):
     # max delay for blpop
     timeout = 30
     # minimum time in seconds between the update of keys to fetch
-    fetch_priorities_delay = 25  # by default < timeout to be sure to
-                                 # fetch them after a timeout occured
+    # by default < timeout to be sure to fetch them after a timeout occured
+    fetch_priorities_delay = 25
+    # number of time to requeue a job after a failure
+    requeue_times = 0
 
     # we want to intercept SIGTERM and SIGINT signals, to stop gracefuly
     terminate_gracefuly = True
@@ -49,7 +51,7 @@ class Worker(object):
                  queue_model=None, job_model=None, error_model=None,
                  logger_base_name=None, logger_level=None, save_errors=None,
                  save_tracebacks=None, max_loops=None, terminate_gracefuly=None,
-                 timeout=None, fetch_priorities_delay=None):
+                 timeout=None, fetch_priorities_delay=None, requeue_times=None):
         """
         Create the worker by saving arguments, doing some checks, preparing
         logger and signals management, and getting queues keys.
@@ -85,6 +87,8 @@ class Worker(object):
             self.timeout = timeout
         if fetch_priorities_delay is not None:
             self.fetch_priorities_delay = fetch_priorities_delay
+        if requeue_times is not None:
+            self.requeue_times = requeue_times
 
         # prepare logging
         if logger_base_name is not None:
@@ -376,7 +380,14 @@ class Worker(object):
                                        error=exception,
                                        trace=trace,
                                        **additional_fields)
+
         self.log(self.job_error_message(job, queue, exception, trace), level='error')
+
+        if self.requeue_times and self.requeue_times >= int(job.tries.hget() or 0):
+            name, priority = queue.hmget('name', 'priority')
+            job.requeue(name, priority, self.queue_model)
+            self.log('[%s|%s] requeued' % (queue._cached_name,
+                                                        job._cached_identifier))
 
     def job_error_message(self, job, queue, exception, trace=None):
         """
@@ -501,6 +512,9 @@ class WorkerConfig(object):
         make_option('--fetch-priorities-delay', type='int', dest='fetch_priorities_delay',
             help='Min delay (seconds) to wait before fetching new priority queues, e.g. --fetch-priorities-delay=30'),
 
+        make_option('--requeue-times', type='int', dest='requeue_times',
+            help='Number of time to requeue a failing job (default to 0), e.g. --requeue-times=5'),
+
         make_option('--database', action='store', dest='database',
             help='Redis database to use (host:port:db), e.g. --database=localhost:6379:15'),
 
@@ -519,7 +533,8 @@ class WorkerConfig(object):
     worker_options = ('name', 'job_model', 'queue_model', 'error_model',
                       'callback', 'logger_base_name', 'logger_level',
                       'save_errors', 'save_tracebacks', 'max_loops',
-                      'terminate_gracefuly', 'timeout', 'fetch_priorities_delay')
+                      'terminate_gracefuly', 'timeout', 'fetch_priorities_delay',
+                      'requeue_times')
 
     @staticmethod
     def _import_module(module_uri):
@@ -620,7 +635,10 @@ class WorkerConfig(object):
             self.parser.error('The timeout argument (%s) must be a positive integer (including 0)' % self.options.timeout)
 
         if self.options.fetch_priorities_delay is not None and self.options.fetch_priorities_delay <= 0:
-            self.parser.error('The fetch_priorities_delay argument (%s) must be a positive integer' % self.options.fetch_priorities_delay)
+            self.parser.error('The fetch-priorities-delay argument (%s) must be a positive integer' % self.options.fetch_priorities_delay)
+
+        if self.options.requeue_times is not None and self.options.requeue_times < 0:
+            self.parser.error('The requeue-times argument (%s) must be a positive integer (including 0)' % self.options.requeue_times)
 
         self.database_config = None
         if self.options.database:
