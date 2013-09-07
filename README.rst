@@ -1,3 +1,5 @@
+|PyPI Version| |Build Status|
+
 redis-limpyd-jobs
 =================
 
@@ -7,8 +9,9 @@ A queue/jobs system based on
 
 Where to find it:
 
-* Github repository: https://github.com/twidi/redis-limpyd-jobs
-* Pypi package: https://pypi.python.org/pypi/redis-limpyd-jobs
+-  Github repository: https://github.com/twidi/redis-limpyd-jobs
+-  Pypi package: https://pypi.python.org/pypi/redis-limpyd-jobs
+-  Documentation: https://documentup.com/twidi/redis-limpyd-jobs
 
 Note that you actually need the
 `redis-limpyd-extensions <https://github.com/twidi/redis-limpyd-extensions>`__
@@ -1283,3 +1286,7 @@ Final words
 The end.
 --------
 
+.. |PyPI Version| image:: https://pypip.in/v/redis-limpyd-jobs/badge.png
+   :target: https://pypi.python.org/pypi/redis-limpyd-jobs
+.. |Build Status| image:: https://travis-ci.org/twidi/redis-limpyd-jobs.png?branch=travis
+   :target: https://travis-ci.org/twidi/redis-limpyd-jobs
