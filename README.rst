@@ -1288,5 +1288,5 @@ The end.
 
 .. |PyPI Version| image:: https://pypip.in/v/redis-limpyd-jobs/badge.png
    :target: https://pypi.python.org/pypi/redis-limpyd-jobs
-.. |Build Status| image:: https://travis-ci.org/twidi/redis-limpyd-jobs.png?branch=travis
+.. |Build Status| image:: https://travis-ci.org/twidi/redis-limpyd-jobs.png?branch=master
    :target: https://travis-ci.org/twidi/redis-limpyd-jobs

@@ -1,5 +1,5 @@
 [![PyPI Version](https://pypip.in/v/redis-limpyd-jobs/badge.png)](https://pypi.python.org/pypi/redis-limpyd-jobs)
-[![Build Status](https://travis-ci.org/twidi/redis-limpyd-jobs.png?branch=travis)](https://travis-ci.org/twidi/redis-limpyd-jobs)
+[![Build Status](https://travis-ci.org/twidi/redis-limpyd-jobs.png?branch=master)](https://travis-ci.org/twidi/redis-limpyd-jobs)
 
 redis-limpyd-jobs
 =================
