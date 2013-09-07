@@ -139,6 +139,12 @@ We choose to use the "`"higher priority is better" way of doing things to give t
 
 Directly updating the priority of a job will not change the queue in which it's stored. But when you add a job via the (recommended) `add_job` class method, if a job with the same identifier exists, its priority will be updated (only if the new one is higher) and the job will be moved to the higher priority queue.
 
+##### `added`
+
+A string (`InstanceHashField`) to store the date and time (a string representation of `datetime.utcnow()`) of the time the job was added to its queue.
+
+It's useful in combination of the `end` field to calculate the job duration.
+
 ##### `start`
 
 A string (`InstanceHashField`) to store the date and time (a string representation of `datetime.utcnow()`) of the time the job was fetched from the queue, just before the callback is called.
@@ -150,6 +156,10 @@ It's useful in combination of the `end` field to calculate the job duration.
 A string (`InstanceHashField`) to store the date and time (a string representation of `datetime.utcnow()`) of the moment the job was set as finished or in error, just after the has finished.
 
 It's useful in combination of the `start` field to calculate the job duration.
+
+##### `tries`
+
+A  integer saved as a string (`InstanceHashField`) to store the number of times the job was executed. It can be more than one if it was requeued after an error.
 
 #### Job attributes
 
@@ -163,11 +173,26 @@ Note that if you don't subclass the `Job` model, you can pass the `queue_model` 
 
 #### Job properties and methods
 
-The `Job` model contains only one property, and no methods:
+The `Job` model contains only one property, and one method:
 
 ##### `duration` (property)
 
 The `duration` property simply returns the time used to compute the job. The return value is a `datetime.timedelta` object if the `start` and `end` fields are set, or `None` on the other case.
+
+##### `requeue` (method)
+
+The `requeue` method allow a job to be put back in the waiting queue when its execution failed.
+
+Arguments:
+
+- `queue_name`
+    The queue name in which to save the job.
+
+- `priority=None`
+    The new priority of the new job. If not defined, the job will keep its actual priority.
+
+- `queue_model`
+    The model to use to store queues. By default, it's set to `Queue`, defined in the `queue_model` attribute of the `Job` model. If the argument is not set, the attribute will be used. Be careful to set it as attribute in your subclass, or as argument in `requeue` or the default `Queue` model will be used and jobs won't be saved in the expected queue model.
 
 #### Job class methods
 

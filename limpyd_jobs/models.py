@@ -5,7 +5,7 @@ from limpyd import fields
 from limpyd.contrib import database, collection
 from limpyd_extensions import related
 
-from limpyd_jobs import STATUSES
+from limpyd_jobs import STATUSES, LimpydJobsException
 
 __all__ = ('BaseJobsModel', 'Queue', 'Job', 'Error')
 
@@ -70,8 +70,10 @@ class Job(BaseJobsModel):
     identifier = fields.InstanceHashField(indexable=True)  # ex: "myobj:123:update"
     status = fields.InstanceHashField(indexable=True)  # see statuses constants
     priority = fields.InstanceHashField(indexable=True, default=0)
+    added = fields.InstanceHashField()
     start = fields.InstanceHashField()
     end = fields.InstanceHashField()
+    tries = fields.InstanceHashField()
 
     queue_model = Queue
 
@@ -111,7 +113,7 @@ class Job(BaseJobsModel):
             current_queue.waiting.lrem(0, job.pk.get())
 
         elif fields_if_new:
-            job.set_fields(**fields_if_new)
+            job.set_fields(added=str(datetime.utcnow()), **fields_if_new)
 
         # add the job to the new queue with a waiting status
 
@@ -135,6 +137,27 @@ class Job(BaseJobsModel):
             return parse(end) - parse(start)
         except:
             return None
+
+    def requeue(self, queue_name, priority=None, queue_model=None):
+        """
+        Requeue the job in the given queue if it has previously failed
+        """
+        # we can only requeue a job that raised an error
+        if self.status.hget() != STATUSES.ERROR:
+            raise LimpydJobsException('Job cannot be requeued if not in ERROR status')
+
+        # reset start, end and status fields, and set priority
+        if not priority:
+            priority = self.priority.hget()
+        self.hdel('start', 'end')
+        self.hmset(status=STATUSES.WAITING, priority=priority)
+
+        if queue_model is None:
+            queue_model = self.queue_model
+
+        # Add the job to te queue waiting list
+        queue = queue_model.get_queue(queue_name, priority)
+        queue.waiting.rpush(self.pk.get())
 
 
 class Error(BaseJobsModel):

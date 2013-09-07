@@ -406,6 +406,7 @@ class Worker(object):
         Called just before the execution of the job
         """
         job.hmset(start=str(datetime.utcnow()), status=STATUSES.RUNNING)
+        job.tries.hincrby(1)
         self.log(self.job_started_message(job, queue))
 
     def job_started_message(self, job, queue):

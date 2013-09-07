@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from limpyd import fields
 
 from limpyd_jobs.models import Queue, Job, Error
-from limpyd_jobs import STATUSES
+from limpyd_jobs import STATUSES, LimpydJobsException
 
 from .base import LimpydBaseTest
 
@@ -230,6 +230,18 @@ class JobsTests(LimpydBaseTest):
         TestJobWithQueueModel.add_job(identifier='job:5', queue_name='test5')
         self.assertEqual(queue.waiting.llen(), 1)
         self.assertEqual(default_queue.waiting.llen(), 0)
+
+    def test_a_job_not_in_error_couldnt_be_requeued(self):
+        job = Job.add_job(identifier='job:1', queue_name='test')
+        with self.assertRaises(LimpydJobsException):
+            job.requeue('test')
+
+    def test_a_job_not_in_error_could_be_requeued(self):
+        job = Job(identifier='job:1', status=STATUSES.ERROR)
+        job.requeue('test')
+        queue = Queue.get_queue('test')
+        self.assertEqual(queue.waiting.llen(), 1)
+        self.assertEqual(job.status.hget(), STATUSES.WAITING)
 
 
 class ErrorsTest(LimpydBaseTest):

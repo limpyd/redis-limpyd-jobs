@@ -405,6 +405,22 @@ class WorkerRunTest(LimpydBaseTest):
         attended_foo = 'Error on queue %s for job %s' % (job.pk.get(), queue.pk.get())
         self.assertEqual(error.foo.hget(), attended_foo)
 
+    def test_job_in_error_could_be_requeue(self):
+        class TestWorker(Worker):
+            def job_error(self, job, queue, exception, trace=None):
+                super(TestWorker, self).job_error(job, queue, exception, trace)
+                job.requeue(self.name)
+
+        job = Job.add_job(identifier='job:1', queue_name='test')
+        queue = Queue.get_queue(name='test')
+        worker = TestWorker(name='test', max_loops=2, timeout=1)
+        worker.run()
+
+        self.assertEqual(job.tries.hget(), "2")
+        self.assertEqual(job.status.hget(), STATUSES.WAITING)
+        self.assertEqual(queue.waiting.llen(), 1)
+
+
     def test_run_ended_method_should_be_called(self):
         class TestWorker(Worker):
             passed = False
