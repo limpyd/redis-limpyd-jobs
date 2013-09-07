@@ -138,6 +138,7 @@ class Job(BaseJobsModel):
 
 
 class Error(BaseJobsModel):
+    job_pk = fields.InstanceHashField(indexable=True)
     identifier = fields.InstanceHashField(indexable=True)
     queue_name = fields.InstanceHashField(indexable=True)
     date = fields.InstanceHashField(indexable=True)
@@ -148,11 +149,11 @@ class Error(BaseJobsModel):
     traceback = fields.InstanceHashField()
 
     @classmethod
-    def add_error(cls, queue_name, identifier, error, when=None,
-                                            trace=None, **additional_fields):
+    def add_error(cls, queue_name, job, error, when=None, trace=None,
+                                                        **additional_fields):
         """
         Add a new error in redis.
-        `identifier` is a job identifier
+        `job` is a job which generated the error
         `queue_name` is the name of the queue where the error arrived
         `error` is an exception, which can has a code (better if it is)
         `when` is the datetime of the error, utcnow will be used if not defined
@@ -165,7 +166,8 @@ class Error(BaseJobsModel):
 
         fields = dict(
             queue_name=queue_name,
-            identifier=identifier,
+            job_pk=job.pk.get(),
+            identifier=getattr(job, '_cached_identifier', job.identifier.hget()),
             date=str(when.date()),
             time=str(when.time()),
             message=str(error),

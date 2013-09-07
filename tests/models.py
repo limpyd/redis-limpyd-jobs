@@ -242,33 +242,47 @@ class ErrorsTest(LimpydBaseTest):
 
     def test_add_error_method_should_add_an_error_instance(self):
         e = ErrorsTest.ExceptionWithCode('the answer', 42)
-        error1 = Error.add_error(queue_name='test', identifier='job:1', error=e)
+        job = Job.add_job(identifier='job:1', queue_name='test')
+        error1 = Error.add_error(queue_name='test', job=job, error=e)
         self.assertEqual(list(Error.collection()), [error1.pk.get()])
-        Error.add_error(queue_name='test', identifier='job:1', error=e)
+        Error.add_error(queue_name='test', job=job, error=e)
         self.assertEqual(len(Error.collection()), 2)
 
     def test_add_error_can_accept_an_exception_without_code(self):
         e = Exception('no code')
-        error = Error.add_error(queue_name='test', identifier='job:1', error=e)
+        job = Job.add_job(identifier='job:1', queue_name='test')
+        error = Error.add_error(queue_name='test', job=job, error=e)
         self.assertEqual(error.code.hget(), None)
 
     def test_add_error_should_store_the_name_of_the_exception(self):
         e = Exception('foo')
-        error = Error.add_error(queue_name='test', identifier='job:1', error=e)
+        job = Job.add_job(identifier='job:1', queue_name='test')
+        error = Error.add_error(queue_name='test', job=job, error=e)
         self.assertEqual(error.type.hget(), 'Exception')
 
         e = ErrorsTest.ExceptionWithCode('the answer', 42)
-        error = Error.add_error(queue_name='test', identifier='job:1', error=e)
+        error = Error.add_error(queue_name='test', job=job, error=e)
         self.assertEqual(error.type.hget(), 'ExceptionWithCode')
+
+    def test_new_error_save_job_pk_and_identifier_appart(self):
+        e = ErrorsTest.ExceptionWithCode('the answer', 42)
+        when = datetime(2012, 9, 29, 22, 58, 56)
+        job = Job.add_job(identifier='job:1', queue_name='test')
+        error = Error.add_error(queue_name='test', job=job, error=e, when=when)
+        self.assertEqual(error.job_pk.hget(), job.pk.get())
+        self.assertEqual(error.identifier.hget(), 'job:1')
+        self.assertEqual(list(Error.collection(job_pk=job.pk.get())), [error.pk.get()])
+        self.assertEqual(list(Error.collection(identifier=job.identifier.hget())), [error.pk.get()])
 
     def test_new_error_save_date_and_time_appart(self):
         e = ErrorsTest.ExceptionWithCode('the answer', 42)
-        day = datetime(2012, 9, 29, 22, 58, 56)
-        error = Error.add_error(queue_name='test', identifier='job:1', error=e,
-                                                                    when=day)
+        when = datetime(2012, 9, 29, 22, 58, 56)
+        job = Job.add_job(identifier='job:1', queue_name='test')
+        error = Error.add_error(queue_name='test', job=job, error=e, when=when)
         self.assertEqual(error.date.hget(), '2012-09-29')
         self.assertEqual(error.time.hget(), '22:58:56')
-        self.assertEqual(error.datetime, day)
+        self.assertEqual(error.datetime, when)
+        self.assertEqual(list(Error.collection(date='2012-09-29')), [error.pk.get()])
 
     def test_extended_error_can_accept_other_fields(self):
         class ExtendedError(Error):
@@ -277,9 +291,10 @@ class ErrorsTest(LimpydBaseTest):
             bar = fields.StringField()
 
         e = ErrorsTest.ExceptionWithCode('the answer', 42)
+        job = Job.add_job(identifier='job:1', queue_name='test')
 
         # create a new error
-        error = ExtendedError.add_error(queue_name='test', identifier='job:1',
+        error = ExtendedError.add_error(queue_name='test', job=job,
                                         error=e, foo='FOO', bar='BAR')
         self.assertEqual(error.foo.get(), 'FOO')
         self.assertEqual(error.bar.get(), 'BAR')

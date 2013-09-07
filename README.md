@@ -282,6 +282,10 @@ Its main purpose is to be able to filter errors, by queue name, job identifier, 
 
 #### Error fields
 
+##### `job_pk`
+
+A string (`InstanceHashField`, indexed) to store the primary key of the job which generated the error.
+
 ##### `idenfitier`
 
 A string (`InstanceHashField`, indexed) to store the identifier of the job that failed.
@@ -328,15 +332,15 @@ The `Error` model provides a single class method:
 
 ##### `add_error`
 
-The `add_error` class method is the main (and recommended) way to add an entry on the `Error` model, by accepting simple arguments that will be break down (`when` becomes `date` and `time`, `error` becomes `code` and `message`)
+The `add_error` class method is the main (and recommended) way to add an entry on the `Error` model, by accepting simple arguments that will be break down (`job` becomes `identifier` and `job_pk`, `when` becomes `date` and `time`, `error` becomes `code` and `message`)
 
 Arguments:
 
 - `queue_name`
     The name of the queue the job came from.
 
-- `identifier`
-    The value for the `identifier` field of the job.
+- `job`
+    The job which generated the error, from which we'll extract `job_pk` and `identifier`
 
 - `error`
     An exception from which we'll extract the code and the message.

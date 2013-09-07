@@ -372,7 +372,7 @@ class Worker(object):
         if self.save_errors:
             additional_fields = self.additional_error_fields(job, queue, exception)
             self.error_model.add_error(queue_name=queue._cached_name,
-                                       identifier=job._cached_identifier,
+                                       job=job,
                                        error=exception,
                                        trace=trace,
                                        **additional_fields)
