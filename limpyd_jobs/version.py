@@ -2,7 +2,7 @@
 
 __all__ = ('__doc__', 'VERSION', '__author__', '__contact__', '__homepage__', '__version__')
 
-VERSION = (0, 0, 4)
+VERSION = (0, 0, 5)
 
 __author__ = 'Stephane "Twidi" Angel'
 __contact__ = "s.angel@twidi.com"
