@@ -43,6 +43,8 @@ class Worker(object):
     fetch_priorities_delay = 25
     # number of time to requeue a job after a failure
     requeue_times = 0
+    # delta to add to the current priority of a job to be requeued
+    requeue_priority_delta = -1
 
     # we want to intercept SIGTERM and SIGINT signals, to stop gracefuly
     terminate_gracefuly = True
@@ -51,7 +53,8 @@ class Worker(object):
                  queue_model=None, job_model=None, error_model=None,
                  logger_base_name=None, logger_level=None, save_errors=None,
                  save_tracebacks=None, max_loops=None, terminate_gracefuly=None,
-                 timeout=None, fetch_priorities_delay=None, requeue_times=None):
+                 timeout=None, fetch_priorities_delay=None, requeue_times=None,
+                 requeue_priority_delta=None):
         """
         Create the worker by saving arguments, doing some checks, preparing
         logger and signals management, and getting queues keys.
@@ -89,6 +92,8 @@ class Worker(object):
             self.fetch_priorities_delay = fetch_priorities_delay
         if requeue_times is not None:
             self.requeue_times = requeue_times
+        if requeue_priority_delta is not None:
+            self.requeue_priority_delta = requeue_priority_delta
 
         # prepare logging
         if logger_base_name is not None:
@@ -385,6 +390,8 @@ class Worker(object):
 
         if self.requeue_times and self.requeue_times >= int(job.tries.hget() or 0):
             name, priority = queue.hmget('name', 'priority')
+            if self.requeue_priority_delta:
+                priority = int(priority) + self.requeue_priority_delta
             job.requeue(name, priority, self.queue_model)
             self.log('[%s|%s] requeued' % (queue._cached_name,
                                                         job._cached_identifier))
@@ -515,6 +522,9 @@ class WorkerConfig(object):
         make_option('--requeue-times', type='int', dest='requeue_times',
             help='Number of time to requeue a failing job (default to 0), e.g. --requeue-times=5'),
 
+        make_option('--requeue-priority-delta', type='int', dest='requeue_priority_delta',
+            help='Delta to add to the actual priority of a failing job to be requeued (default to -1, ie one level lower), e.g. --requeue-priority-delta=-2'),
+
         make_option('--database', action='store', dest='database',
             help='Redis database to use (host:port:db), e.g. --database=localhost:6379:15'),
 
@@ -534,7 +544,7 @@ class WorkerConfig(object):
                       'callback', 'logger_base_name', 'logger_level',
                       'save_errors', 'save_tracebacks', 'max_loops',
                       'terminate_gracefuly', 'timeout', 'fetch_priorities_delay',
-                      'requeue_times')
+                      'requeue_times', 'requeue_priority_delta')
 
     @staticmethod
     def _import_module(module_uri):

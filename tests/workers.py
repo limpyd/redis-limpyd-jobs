@@ -55,6 +55,7 @@ class WorkerArgumentsTest(LimpydBaseTest):
         self.assertEqual(worker.timeout, 30)
         self.assertEqual(worker.fetch_priorities_delay, 25)
         self.assertEqual(worker.requeue_times, 0)
+        self.assertEqual(worker.requeue_priority_delta, -1)
 
     def test_worker_arguements_should_be_saved(self):
         def callback(job, queue):
@@ -73,7 +74,8 @@ class WorkerArgumentsTest(LimpydBaseTest):
                     save_errors=False,
                     timeout=20,
                     fetch_priorities_delay=15,
-                    requeue_times=1
+                    requeue_times=1,
+                    requeue_priority_delta=-2
                 )
 
         self.assertEqual(worker.name, 'test')
@@ -89,6 +91,7 @@ class WorkerArgumentsTest(LimpydBaseTest):
         self.assertEqual(worker.timeout, 20)
         self.assertEqual(worker.fetch_priorities_delay, 15)
         self.assertEqual(worker.requeue_times, 1)
+        self.assertEqual(worker.requeue_priority_delta, -2)
 
     def test_worker_subclass_attributes_should_be_used(self):
         class TestWorker(Worker):
@@ -104,6 +107,7 @@ class WorkerArgumentsTest(LimpydBaseTest):
             timeout = 20
             fetch_priorities_delay = 15
             requeue_times = 1
+            requeue_priority_delta = -2
 
         worker = TestWorker()
 
@@ -119,6 +123,7 @@ class WorkerArgumentsTest(LimpydBaseTest):
         self.assertEqual(worker.timeout, 20)
         self.assertEqual(worker.fetch_priorities_delay, 15)
         self.assertEqual(worker.requeue_times, 1)
+        self.assertEqual(worker.requeue_priority_delta, -2)
 
     def test_worker_subclass_attributes_should_be_overriden_by_arguments(self):
         class OtherTestQueue(Queue):
@@ -143,6 +148,7 @@ class WorkerArgumentsTest(LimpydBaseTest):
             timeout = 20
             fetch_priorities_delay = 15
             requeue_times = 1
+            requeue_priority_delta = -2
 
         worker = Worker(
                     name='testfoo',
@@ -156,7 +162,8 @@ class WorkerArgumentsTest(LimpydBaseTest):
                     save_errors=True,
                     timeout=40,
                     fetch_priorities_delay=10,
-                    requeue_times=2
+                    requeue_times=2,
+                    requeue_priority_delta=-3
                 )
 
         self.assertEqual(worker.name, 'testfoo')
@@ -171,6 +178,7 @@ class WorkerArgumentsTest(LimpydBaseTest):
         self.assertEqual(worker.timeout, 40)
         self.assertEqual(worker.fetch_priorities_delay, 10)
         self.assertEqual(worker.requeue_times, 2)
+        self.assertEqual(worker.requeue_priority_delta, -3)
 
     def test_bad_model_should_be_rejected(self):
         class FooBar(object):
@@ -430,12 +438,13 @@ class WorkerRunTest(LimpydBaseTest):
 
     def test_job_in_error_is_automatically_requeued_if_asked(self):
         job = Job.add_job(identifier='job:1', queue_name='test')
-        queue = Queue.get_queue(name='test')
-        worker = Worker(name='test', max_loops=2, requeue_times=2)  # no callback
+        Queue.get_queue(name='test')
+        worker = Worker(name='test', max_loops=2, requeue_times=2, timeout=1, fetch_priorities_delay=1)  # no callback
         worker.run()
 
         self.assertEqual(job.tries.hget(), "2")
         self.assertEqual(job.status.hget(), STATUSES.WAITING)
+        queue = Queue.get_queue(name='test', priority=-2)  # priority decreased 2 times
         self.assertEqual(queue.waiting.llen(), 1)
 
     def test_run_ended_method_should_be_called(self):
@@ -778,6 +787,13 @@ class WorkerConfigArgumentsTest(WorkerConfigBaseTest):
 
         with self.assertSystemExit(in_stderr="must be a positive integer (including 0)"):
             WorkerConfig(self.mkargs('--requeue-times=-1'))
+
+    def test_requeue_priority_delta_argument(self):
+        conf = WorkerConfig(self.mkargs('--requeue-priority-delta=-2'))
+        self.assertEqual(conf.options.requeue_priority_delta, -2)
+
+        with self.assertSystemExit(in_stderr="option --requeue-priority-delta: invalid integer value: 'none'"):
+            WorkerConfig(self.mkargs('--requeue-priority-delta=none'))
 
     def test_database_argument(self):
         conf = WorkerConfig(self.mkargs('--database=localhost:6379:15'))
