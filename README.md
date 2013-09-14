@@ -766,16 +766,25 @@ Returns nothing.
 When the callback (or the `execute` method) is terminated by raising an exception, the `job_error` method is called, with the job and the queue in which it was found, and the raised exception and, if `save_tracebacks` is `True`, the traceback.
 
 This method updates the `end` and `status` fields of the job, moves the job into the `error` list of the queue, adds a new error object (if `save_errors` is `True`), then log the message returned by `job_error_message`.
-If the `requeue_times` allows it, the job is requeued in the same queue with its priority lowered by 1 (defined by `requeue_priority_delta`, default to -1).
+If the `requeue_times` allows it, the job is requeued in the same queue with its priority lowered by 1 (defined by `requeue_priority_delta`, default to -1), then the message returned a call to `job_requeue_message` is logged.
 
 ##### `job_error_message`
 
 Signature:
 
 ```python
-def job_error_message(self, job, queue, exception):
+def job_error_message(self, job, queue, exception, trace=None):
 ```
 Returns a string to be logged in `job_error`.
+
+##### `job_requeue_message`
+
+Signature:
+
+```python
+def job_requeue_message(self, job, queue, priority):
+```
+Returns a string to be logged in `job_error` when the job was requeued. `priority` is the new job's priority (may have changed by applying `requeue_priority_delta`)
 
 ##### `additional_error_fields`
 

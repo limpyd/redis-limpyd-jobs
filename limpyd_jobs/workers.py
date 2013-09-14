@@ -393,8 +393,7 @@ class Worker(object):
             if self.requeue_priority_delta:
                 priority = int(priority) + self.requeue_priority_delta
             job.requeue(name, priority, self.queue_model)
-            self.log('[%s|%s] requeued' % (queue._cached_name,
-                                                        job._cached_identifier))
+            self.log(self.job_requeue_message(job, queue, priority))
 
     def job_error_message(self, job, queue, exception, trace=None):
         """
@@ -402,6 +401,13 @@ class Worker(object):
         """
         return '[%s|%s] error: %s' % (queue._cached_name,
                                       job._cached_identifier, str(exception))
+
+    def job_requeue_message(self, job, queue, priority):
+        """
+        Return the message to log when a job is requeued
+        """
+        return '[%s|%s] requeued with priority %s' % (queue._cached_name,
+                                            job._cached_identifier, priority)
 
     def job_success(self, job, queue, job_result):
         """
