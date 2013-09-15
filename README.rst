@@ -1515,6 +1515,29 @@ process name, to have stuff like this:
 
 You can disable it by passing the ``--no-title`` argument.
 
+Tests
+-----
+
+The ``redis-limpyd-jobs`` package is full tested (ahem, coverage 98% ).
+
+To run the tests, which are not installed via the ``setup.py`` file, you
+can do:
+
+::
+
+    python run_tests.py
+    [...]
+    Ran 97 tests in 13.174s
+
+Or if you have ``nosetests`` installed:
+
+::
+
+    nosetests
+
+The ``nosetests`` configuration is provided in the ``setup.cfg`` file
+and include the coverage, if ``nose-cov`` is installed.
+
 Final words
 -----------
 
