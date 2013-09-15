@@ -156,10 +156,11 @@ It's a single letter but we provide a class to help using it verbosely:
         >> "s"
 
 When a job is created via the ``add_job`` class method, its status is
-set to ``STATUSES.WAITING``. When it selected by the worker to execute
-it, the status passes to ``STATUSES.RUNNING``. When finished, it's one
-of ``STATUSES.SUCCESS`` or ``STATUSES.ERROR``. An other available status
-is ``STATUSES.CANCELED``, useful if you want to cancel a job without
+set to ``STATUSES.WAITING``, or ``STATUSES.DELAYED`` if it'is delayed by
+setting ``delayed_until``. When it selected by the worker to execute it,
+the status passes to ``STATUSES.RUNNING``. When finished, it's one of
+``STATUSES.SUCCESS`` or ``STATUSES.ERROR``. An other available status is
+``STATUSES.CANCELED``, useful if you want to cancel a job without
 removing it from its queue.
 
 You can also display the full string of a status:
@@ -226,6 +227,25 @@ A integer saved as a string (``InstanceHashField``) to store the number
 of times the job was executed. It can be more than one if it was
 requeued after an error.
 
+``delayed_until``
+'''''''''''''''''
+
+The string representation (``InstanceHashField``) of a ``datetime``
+object until when the job may be in the ``delayed`` list (a redis
+sorted-set) of the queue.
+
+It can be set when calling ``add_job`` by passing either a
+``delayed_until`` argument, which must be a ``datetime``, or a
+``delayed_for`` argument, which must be a number of seconds (int or
+float) or a ``timedelta`` object. The ``delayed_for`` argument will be
+added to the current time (``datetime.utcnow()``) to compute
+``delayed_until``.
+
+If a job is in error after its execution and if the worker has a
+positive ``requeue_delay_delta`` attribute, the ``delayed_until`` field
+will be set accordingly, useful to retry a erroneous job after a certain
+delay.
+
 Job attributes
 ^^^^^^^^^^^^^^
 
@@ -258,8 +278,8 @@ job. The return value is a ``datetime.timedelta`` object if the
 ``requeue`` (method)
 ''''''''''''''''''''
 
-The ``requeue`` method allow a job to be put back in the waiting queue
-when its execution failed.
+The ``requeue`` method allow a job to be put back in the waiting (or
+delayed) queue when its execution failed.
 
 Arguments:
 
@@ -268,12 +288,40 @@ Arguments:
 -  ``priority=None`` The new priority of the new job. If not defined,
    the job will keep its actual priority.
 
+-  ``requeue_delay_delta=None`` The number of seconds (or a
+   ``timedelta`` object) to wait before the job being really requeued
+   (it will set the ``delayed_until`` job's field)
+
 -  ``queue_model`` The model to use to store queues. By default, it's
    set to ``Queue``, defined in the ``queue_model`` attribute of the
    ``Job`` model. If the argument is not set, the attribute will be
    used. Be careful to set it as attribute in your subclass, or as
    argument in ``requeue`` or the default ``Queue`` model will be used
    and jobs won't be saved in the expected queue model.
+
+``enqueue_or_delay`` (method)
+'''''''''''''''''''''''''''''
+
+It's the method, called in ``add_job`` and ``requeue`` that will either
+put the job in the waiting or delayed queue, depending of
+``delayed_until``. If this argument is defined and in the future, the
+job is delayed, else it's simply queued.
+
+Arguments:
+
+-  ``queue_name`` The queue name in which to save the job.
+
+-  ``priority`` The new priority of the new job.
+
+-  ``delayed_until`` The date (must be either a ``datetime`` object of
+   the string representation of one) until when the job will remain in
+   the delayed queue. It will not be processed until this date.
+
+-  ``prepend`` Set to ``True`` to add the job at the start of the
+   waiting list, to be the first to be executed (only if not delayed)
+
+-  ``queue_model`` The model to use to store queues. See ``add_job`` and
+   ``requeue``.
 
 Job class methods
 ^^^^^^^^^^^^^^^^^
@@ -311,6 +359,16 @@ Arguments:
    to be the first to be executed, simply by setting the ``prepend``
    argument to ``True``. If the job already exists, it will be moved at
    the beginning of the list.
+
+-  ``delayed_until=None`` Set this to a ``datetime`` object to set the
+   job to be executed in the future. If defined and in the future, the
+   job will be added to the delayed list (a redis sorted-set) instead of
+   the waiting one. The real ``delayed_until`` can also be set by
+   passing the ``delayed_for`` argument.
+
+-  ``delayed_for=None`` A number of seconds (as a int, float or a
+   ``timedelta`` object) to wait before adding the job to the waiting
+   list. It will compute the ``delayed_until`` field of the job.
 
 If you use a subclass of the ``Job`` model, you can pass additional
 arguments to the ``add_job`` method simply by passing them as named
@@ -380,6 +438,14 @@ the waiting list and successfully executed.
 A list (``ListField``) to store the primary keys of jobs fetched from
 the waiting list for which the execution failed.
 
+``delayed``
+'''''''''''
+
+A sorted set (``SortedSetField``) to store delayed jobs, ones having a
+``delayed_until`` datetime in the future. The timestamp representation
+of the ``delayed_until`` field is used as the score for this sorted-set,
+to ease the retrieval of jobs that are now ready.
+
 Queue attributes
 ^^^^^^^^^^^^^^^^
 
@@ -388,7 +454,58 @@ The ``Queue`` model has no specific attributes.
 Queue properties and methods
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-The ``Queue`` model has no specific properties or method.
+The ``Queue`` model provides two properties and a few methods:
+
+``first_delayed`` (property)
+''''''''''''''''''''''''''''
+
+Returns a tuple representing the first job to be ready in the delayed
+queue. It's a tuple with the job's pk and the timestamp representation
+of it's ``delayed_until`` value (it's the score of the sorted\_set).
+
+Returns None if the delayed queue is empty.
+
+``first_delayed_time`` (property)
+'''''''''''''''''''''''''''''''''
+
+Return the timestamp representation of the first delayed job to be
+ready, or None if the delayed queue is empty.
+
+``delay_job`` (method)
+''''''''''''''''''''''
+
+Put a job in the delayed queue.
+
+Arguments:
+
+-  ``job_pk`` The primary key of the job to delay.
+
+-  ``delayed_until`` A ``datetime`` object specifying when the job
+   should be put back in the waiting queue. It will be converted into a
+   timestamp used as the score of the delayed list, which is a redis
+   sorted-set.
+
+``enqueue_job`` (method)
+''''''''''''''''''''''''
+
+Put a job in the waiting list.
+
+Arguments:
+
+-  ``job_pk`` The primary key of the job to enqueue.
+
+-  ``prepend=False`` Set to ``True`` to add the job at the start of the
+   waiting list, to be the first to be executed.
+
+``requeue_delayed_jobs`` (method)
+'''''''''''''''''''''''''''''''''
+
+This method will check for all jobs in the delayed queue that are now
+ready to be executed and put them back in the waiting list.
+
+Arguments:
+
+-  ``job_model`` The model used for jobs.
 
 Queue class methods
 ^^^^^^^^^^^^^^^^^^^
@@ -413,13 +530,13 @@ arguments to the ``get_queue`` method simply by passing them as named
 arguments, they will be saved if a new queue is created (but not if an
 existing queue is found)
 
-``get_keys``
-''''''''''''
+``get_waiting_keys``
+''''''''''''''''''''
 
-The ``get_keys`` class method returns all the existing queue with a
-given name, sorted by priority (reverse order: the highest priorities
-come first). The returned value is a list of redis keys for each
-``waiting`` lists of matching queues. It's used internally by the
+The ``get_waiting_keys`` class method returns all the existing (waiting)
+queues with a given name, sorted by priority (reverse order: the highest
+priorities come first). The returned value is a list of redis keys for
+each ``waiting`` lists of matching queues. It's used internally by the
 workers as argument to the ``blpop`` redis command.
 
 ``count_waiting_jobs``
@@ -427,6 +544,26 @@ workers as argument to the ``blpop`` redis command.
 
 The ``count_waiting_jobs`` class method returns the number of jobs still
 waiting for a given queue name, combining all priorities.
+
+Arguments:
+
+-  ``name`` The name of the queues to take into accounts.
+
+``count_delayed_jobs``
+''''''''''''''''''''''
+
+The ``count_delayed_jobs`` class method returns the number of jobs still
+delayed for a given queue name, combining all priorities.
+
+Arguments:
+
+-  ``name`` The name of the queues to take into accounts.
+
+``get_all_by_priority``
+'''''''''''''''''''''''
+
+The ``get_all_by_priority`` returns a list of queues for the given name,
+ordered by priorities (the highest priority first)
 
 Arguments:
 
@@ -679,7 +816,7 @@ little ``timeout`` won't alter the number of loops defined by
 ``fetch_priorities_delay``
 ''''''''''''''''''''''''''
 
-The fetch\_priorities\_delay is the delay between two fetches of the
+The ``fetch_priorities_delay`` is the delay between two fetches of the
 list of priorities for the current worker.
 
 If a job was added with a priority that did not exist when the worker
@@ -689,6 +826,17 @@ expires.
 Note that if this delay is, say, 5 seconds (it's 25 by default), and the
 ``timeout`` parameter is 30, you may wait 30 seconds before the new
 priority fetch because if there is no jobs in the priority queues
+actually managed by the worker, the time is in the redis hands.
+
+``fetch_delayed_delay``
+'''''''''''''''''''''''
+
+The ``fetch_delayed_delay`` is the delay between two fetches of the
+delayed jobs that are now ready in the queues managed by the worker.
+
+Note that if this delay is, say, 5 seconds (it's 25 by default), and the
+``timeout`` parameter is 30, you may wait 30 seconds before the new
+delayed fetch because if there is no jobs in the priority queues
 actually managed by the worker, the time is in the redis hands.
 
 ``requeue_times``
@@ -703,8 +851,16 @@ This attribute is 0 by default so by default a job won't be requeued.
 ''''''''''''''''''''''''''
 
 This number will be added to the current priority of the job that will
-be requeued. By default it's set to -1 to lowerise the priority at each
+be requeued. By default it's set to -1 to decrease the priority at each
 requeue.
+
+``requeue_delay_delta``
+'''''''''''''''''''''''
+
+It's a number of seconds to wait before adding back an erroneous job in
+the waiting queue, set by default to 30: when a job failed to execute,
+it's put in the delayed queue for 30 seconds then it'll be put back in
+the waiting queue (depending on the ``fetch_delayed_delay`` attribute)
 
 Other worker's attributes
 ^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -780,8 +936,9 @@ Signature:
                      queue_model=None, job_model=None, error_model=None,
                      logger_base_name=None, logger_level=None, save_errors=None,
                      save_tracebacks=None, max_loops=None, terminate_gracefuly=None,
-                     timeout=None, fetch_priorities_delay=None, requeue_times=None,
-                     requeue_priority_delta=None):
+                     timeout=None, fetch_priorities_delay=None,
+                     fetch_delayed_delay=None, requeue_times=None,
+                     requeue_priority_delta=None, requeue_delay_delta=None):
 
 Returns nothing.
 
@@ -1127,7 +1284,8 @@ the job into the ``error`` list of the queue, adds a new error object
 (if ``save_errors`` is ``True``), then log the message returned by
 ``job_error_message``. If the ``requeue_times`` allows it, the job is
 requeued in the same queue with its priority lowered by 1 (defined by
-``requeue_priority_delta``, default to -1).
+``requeue_priority_delta``, default to -1), then the message returned a
+call to ``job_requeue_message`` is logged.
 
 ``job_error_message``
 '''''''''''''''''''''
@@ -1136,9 +1294,22 @@ Signature:
 
 .. code:: python
 
-    def job_error_message(self, job, queue, exception):
+    def job_error_message(self, job, queue, exception, trace=None):
 
 Returns a string to be logged in ``job_error``.
+
+``job_requeue_message``
+'''''''''''''''''''''''
+
+Signature:
+
+.. code:: python
+
+    def job_requeue_message(self, job, queue, priority):
+
+Returns a string to be logged in ``job_error`` when the job was
+requeued. ``priority`` is the new job's priority (may have changed by
+applying ``requeue_priority_delta``)
 
 ``additional_error_fields``
 '''''''''''''''''''''''''''
@@ -1205,6 +1376,17 @@ Signature:
 Returns the number of jobs in waiting state that can be run by this
 worker.
 
+``count_delayed_jobs``
+''''''''''''''''''''''
+
+Signature:
+
+.. code:: python
+
+    def count_delayed_jobs(self):
+
+Returns the number of jobs in the delayed queues managed by this worker.
+
 The worker.py script
 ~~~~~~~~~~~~~~~~~~~~
 
@@ -1233,7 +1415,7 @@ Instead of explaining all arguments, see below the result of the
 ::
 
     $ limpyd-jobs-worker  --help
-    Usage: limpyd-jobs-worker [options]
+    Usage: worker.py [options]
 
     Run a worker using redis-limpyd-jobs
 
@@ -1256,7 +1438,7 @@ Instead of explaining all arguments, see below the result of the
       --queue-model=QUEUE_MODEL
                             Name of the Queue model to use, e.g. --queue-
                             model=my.module.QueueModel
-      --errro-model=ERROR_MODEL
+      --error-model=ERROR_MODEL
                             Name of the Error model to use, e.g. --queue-
                             model=my.module.ErrorModel
       --worker-class=WORKER_CLASS
@@ -1288,8 +1470,10 @@ Instead of explaining all arguments, see below the result of the
                             for no timeout), e.g. --timeout=30
       --fetch-priorities-delay=FETCH_PRIORITIES_DELAY
                             Min delay (seconds) to wait before fetching new
-                            priority queues (>= timeout), e.g.
-                            --fetch-priorities-delay=30
+                            priority queues, e.g. --fetch-priorities-delay=20
+      --fetch-delayed-delay=FETCH_DELAYED_DELAY
+                            Min delay (seconds) to wait before updating delayed
+                            jobs, e.g. --fetch-delayed-delay=20
       --requeue-times=REQUEUE_TIMES
                             Number of time to requeue a failing job (default to
                             0), e.g. --requeue-times=5
@@ -1297,6 +1481,9 @@ Instead of explaining all arguments, see below the result of the
                             Delta to add to the actual priority of a failing job
                             to be requeued (default to -1, ie one level lower),
                             e.g. --requeue-priority-delta=-2
+      --requeue-delay-delta=REQUEUE_DELAY_DELTA
+                            How much time (seconds) to delay a job to be requeued
+                            (default to 30), e.g. --requeue-delay-delta=15
       --database=DATABASE   Redis database to use (host:port:db), e.g.
                             --database=localhost:6379:15
       --no-title            Do not update the title of the worker's process, e.g.
@@ -1322,9 +1509,9 @@ process name, to have stuff like this:
 ::
 
     limpyd-jobs-worker#1566090 [init] queue=foo
-    limpyd-jobs-worker#1566090 [starting] queue=foo loop=0/1000 waiting-jobs=10
-    limpyd-jobs-worker#1566090 [running] queue=foo loop=1/1000 waiting-jobs=9
-    limpyd-jobs-worker#1566090 [terminated] queue=foo loop=10/1000 waiting-jobs=0
+    limpyd-jobs-worker#1566090 [starting] queue=foo loop=0/1000 waiting=10 delayed=0
+    limpyd-jobs-worker#1566090 [running] queue=foo loop=1/1000 waiting=9 delayed=2
+    limpyd-jobs-worker#1566090 [terminated] queue=foo loop=10/1000 waiting=0 delayed=0
 
 You can disable it by passing the ``--no-title`` argument.
 

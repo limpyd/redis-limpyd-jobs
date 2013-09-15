@@ -7,7 +7,7 @@ class STATUSES(dict):
     All available job's statuses.
     To use this way:
         job.status.hset(STATUSES.SUCCESS)  # or STATUSES['SUCCESS']
-    Available statuses: WAITING, RUNNING, SUCCESS, ERROR, CANCELED
+    Available statuses: DELAYED, WAITING, RUNNING, SUCCESS, ERROR, CANCELED
     Use the `by_value` to get the key from a value:
         STATUSES.by_value(job.status.hget())
         >> 'SUCCESS'
@@ -29,6 +29,7 @@ class STATUSES(dict):
 
 STATUSES = STATUSES(
         WAITING='w',
+        DELAYED='d',
         RUNNING='r',
         SUCCESS='s',
         ERROR='e',

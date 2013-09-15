@@ -41,10 +41,15 @@ class Worker(object):
     # minimum time in seconds between the update of keys to fetch
     # by default < timeout to be sure to fetch them after a timeout occured
     fetch_priorities_delay = 25
+    # minimum time in seconds between the update of delayed jobs
+    # by default < timeout to be sure to fetch them after a timeout occured
+    fetch_delayed_delay = 25
     # number of time to requeue a job after a failure
     requeue_times = 0
     # delta to add to the current priority of a job to be requeued
     requeue_priority_delta = -1
+    # how much time to delay a job to be requeued
+    requeue_delay_delta = 30
 
     # we want to intercept SIGTERM and SIGINT signals, to stop gracefuly
     terminate_gracefuly = True
@@ -53,8 +58,9 @@ class Worker(object):
                  queue_model=None, job_model=None, error_model=None,
                  logger_base_name=None, logger_level=None, save_errors=None,
                  save_tracebacks=None, max_loops=None, terminate_gracefuly=None,
-                 timeout=None, fetch_priorities_delay=None, requeue_times=None,
-                 requeue_priority_delta=None):
+                 timeout=None, fetch_priorities_delay=None,
+                 fetch_delayed_delay=None, requeue_times=None,
+                 requeue_priority_delta=None, requeue_delay_delta=None):
         """
         Create the worker by saving arguments, doing some checks, preparing
         logger and signals management, and getting queues keys.
@@ -90,10 +96,14 @@ class Worker(object):
             self.timeout = timeout
         if fetch_priorities_delay is not None:
             self.fetch_priorities_delay = fetch_priorities_delay
+        if fetch_delayed_delay is not None:
+            self.fetch_delayed_delay = fetch_delayed_delay
         if requeue_times is not None:
             self.requeue_times = requeue_times
         if requeue_priority_delta is not None:
             self.requeue_priority_delta = requeue_priority_delta
+        if requeue_delay_delta is not None:
+            self.requeue_delay_delta = requeue_delay_delta
 
         # prepare logging
         if logger_base_name is not None:
@@ -111,6 +121,7 @@ class Worker(object):
         self.status = None  # is set to None/waiting/running by the worker
         self.end_signal_caught = False  # internaly set to True if end signal caught
         self.last_fetch_priorities = None  # last time the keys to fetch were updated
+        self.last_requeue_delayed = None  # last time the ready delayed jobs where requeued
 
         self._update_status_callbacks = []  # callbacks to call when status is updated
 
@@ -263,7 +274,7 @@ class Worker(object):
         """
         Update the redis keys to listen for new jobs priorities.
         """
-        self.keys = self.queue_model.get_keys(self.name)
+        self.keys = self.queue_model.get_waiting_keys(self.name)
         self.last_update_keys = datetime.utcnow()
 
     def count_waiting_jobs(self):
@@ -271,6 +282,12 @@ class Worker(object):
         Return the number of all jobs waiting in queues managed by the worker
         """
         return self.queue_model.count_waiting_jobs(self.name)
+
+    def count_delayed_jobs(self):
+        """
+        Return the number of all delayed jobs in queues managed by the worker
+        """
+        return self.queue_model.count_delayed_jobs(self.name)
 
     def run_started(self):
         """
@@ -295,6 +312,8 @@ class Worker(object):
 
         # get keys or wait for queues available if no ones are yet
         self.update_keys()
+        self.requeue_delayed_jobs()
+
         if not self.keys:
             self.log('No queues yet with the name %s.' % self.name, level='warning')
             while not self.keys:
@@ -313,16 +332,30 @@ class Worker(object):
         if self.terminate_gracefuly:
             self.stop_handling_end_signal()
 
+    def requeue_delayed_jobs(self):
+        """
+        Requeue each delayed job that are now ready to be executed
+        """
+        for queue in self.queue_model.get_all_by_priority(self.name):
+            queue.requeue_delayed_jobs(job_model=self.job_model)
+        self.last_requeue_delayed = datetime.utcnow()
+
     def _main_loop(self):
         """
         Run jobs until must_stop returns True
         """
         fetch_priorities_delay = timedelta(seconds=self.fetch_priorities_delay)
+        fetch_delayed_delay = timedelta(seconds=self.fetch_delayed_delay)
 
         while not self.must_stop():
             self.set_status('waiting')
+
             if self.last_update_keys + fetch_priorities_delay < datetime.utcnow():
                 self.update_keys()
+
+            if self.last_requeue_delayed + fetch_delayed_delay < datetime.utcnow():
+                self.requeue_delayed_jobs()
+
             try:
                 queue_and_job = self.wait_for_job()
                 if queue_and_job is None:
@@ -392,7 +425,7 @@ class Worker(object):
             name, priority = queue.hmget('name', 'priority')
             if self.requeue_priority_delta:
                 priority = int(priority) + self.requeue_priority_delta
-            job.requeue(name, priority, self.queue_model)
+            job.requeue(name, priority, self.requeue_delay_delta, self.queue_model)
             self.log(self.job_requeue_message(job, queue, priority))
 
     def job_error_message(self, job, queue, exception, trace=None):
@@ -406,8 +439,16 @@ class Worker(object):
         """
         Return the message to log when a job is requeued
         """
-        return '[%s|%s] requeued with priority %s' % (queue._cached_name,
-                                            job._cached_identifier, priority)
+
+        msg = '[%s|%s] requeued with priority %'
+        args = [queue._cached_name, job._cached_identifier]
+
+        delayed_until = job.delayed_until.hget()
+        if delayed_until:
+            msg += ', delayed until %s'
+            args.append(delayed_until)
+
+        return msg % tuple(args)
 
     def job_success(self, job, queue, job_result):
         """
@@ -523,13 +564,19 @@ class WorkerConfig(object):
             help='Max delay (seconds) to wait for a redis BLPOP call (0 for no timeout), e.g. --timeout=30'),
 
         make_option('--fetch-priorities-delay', type='int', dest='fetch_priorities_delay',
-            help='Min delay (seconds) to wait before fetching new priority queues, e.g. --fetch-priorities-delay=30'),
+            help='Min delay (seconds) to wait before fetching new priority queues, e.g. --fetch-priorities-delay=20'),
+
+        make_option('--fetch-delayed-delay', type='int', dest='fetch_delayed_delay',
+            help='Min delay (seconds) to wait before updating delayed jobs, e.g. --fetch-delayed-delay=20'),
 
         make_option('--requeue-times', type='int', dest='requeue_times',
             help='Number of time to requeue a failing job (default to 0), e.g. --requeue-times=5'),
 
         make_option('--requeue-priority-delta', type='int', dest='requeue_priority_delta',
             help='Delta to add to the actual priority of a failing job to be requeued (default to -1, ie one level lower), e.g. --requeue-priority-delta=-2'),
+
+        make_option('--requeue-delay-delta', type='int', dest='requeue_delay_delta',
+            help='How much time (seconds) to delay a job to be requeued (default to 30), e.g. --requeue-delay-delta=15'),
 
         make_option('--database', action='store', dest='database',
             help='Redis database to use (host:port:db), e.g. --database=localhost:6379:15'),
@@ -549,8 +596,10 @@ class WorkerConfig(object):
     worker_options = ('name', 'job_model', 'queue_model', 'error_model',
                       'callback', 'logger_base_name', 'logger_level',
                       'save_errors', 'save_tracebacks', 'max_loops',
-                      'terminate_gracefuly', 'timeout', 'fetch_priorities_delay',
-                      'requeue_times', 'requeue_priority_delta')
+                      'terminate_gracefuly', 'timeout',
+                      'fetch_priorities_delay', 'fetch_delayed_delay',
+                      'requeue_times', 'requeue_priority_delta',
+                      'requeue_delay_delta')
 
     @staticmethod
     def _import_module(module_uri):
@@ -653,8 +702,14 @@ class WorkerConfig(object):
         if self.options.fetch_priorities_delay is not None and self.options.fetch_priorities_delay <= 0:
             self.parser.error('The fetch-priorities-delay argument (%s) must be a positive integer' % self.options.fetch_priorities_delay)
 
+        if self.options.fetch_delayed_delay is not None and self.options.fetch_delayed_delay <= 0:
+            self.parser.error('The fetch-delayed-delay argument (%s) must be a positive integer' % self.options.fetch_delayed_delay)
+
         if self.options.requeue_times is not None and self.options.requeue_times < 0:
             self.parser.error('The requeue-times argument (%s) must be a positive integer (including 0)' % self.options.requeue_times)
+
+        if self.options.requeue_delay_delta is not None and self.options.requeue_delay_delta < 0:
+            self.parser.error('The rrequeue-delay-delta argument (%s) must be a positive integer (including 0)' % self.options.requeue_delay_delta)
 
         self.database_config = None
         if self.options.database:
@@ -791,7 +846,10 @@ class WorkerConfig(object):
             title_parts.append('loop=%s/%s' % (self.worker.num_loops, self.worker.max_loops))
 
             # and about the number of jobs to run
-            title_parts.append('waiting-jobs=%s' % self.worker.count_waiting_jobs())
+            title_parts.append('waiting=%s' % self.worker.count_waiting_jobs())
+
+            # and about the number of delayed jobs
+            title_parts.append('delayed=%s' % self.worker.count_delayed_jobs())
 
         return ' '.join(title_parts)
 

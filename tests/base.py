@@ -160,13 +160,13 @@ class LimpydBaseTestTest(LimpydBaseTest):
 
     def test_statuses_dict_is_ok(self):
         self.assertTrue(isinstance(STATUSES, dict))
-        for status in ('WAITING', 'RUNNING', 'SUCCESS', 'ERROR', 'CANCELED'):
+        for status in ('WAITING', 'DELAYED', 'RUNNING', 'SUCCESS', 'ERROR', 'CANCELED'):
             value = status[0].lower()
             self.assertEqual(getattr(STATUSES, status), value)
             self.assertEqual(STATUSES.get(status), value)
             self.assertEqual(STATUSES.by_value(value), status)
 
-        self.assertEqual(len(STATUSES.keys()), 5)
+        self.assertEqual(len(STATUSES.keys()), 6)
 
         self.assertEqual(STATUSES.by_value('x', 'UNKNOWN'), 'UNKNOWN')
 

@@ -1,3 +1,7 @@
+V 0.0.6  2013-09-15
+
+    * Jobs can be delayed (when created and/or requeued in case or error)
+
 V 0.0.5  2013-09-08
 
     * Jobs can be requeued in case of error

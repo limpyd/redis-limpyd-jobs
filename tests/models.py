@@ -1,8 +1,11 @@
 from datetime import datetime, timedelta
+from dateutil.parser import parse
+from time import sleep
+import traceback
 
 from limpyd import fields
 
-from limpyd_jobs.models import Queue, Job, Error
+from limpyd_jobs.models import Queue, Job, Error, datetime_to_score
 from limpyd_jobs import STATUSES, LimpydJobsException
 
 from .base import LimpydBaseTest
@@ -28,7 +31,7 @@ class QueuesTest(LimpydBaseTest):
         count_after = self.count_queues()
         self.assertEqual(count_after, count_before)
 
-    def test_get_keys_should_return_all_keys_for_a_name(self):
+    def test_get_waiting_keys_should_return_all_keys_for_a_name(self):
         # create two with the same name and different priorities
         q0 = Queue.get_queue(name='test', priority=0)
         q1 = Queue.get_queue(name='test', priority=1)
@@ -36,16 +39,25 @@ class QueuesTest(LimpydBaseTest):
         qx = Queue.get_queue(name='foobar')
 
         # test we can get all keys for 'test', ordered by priority desc
-        keys = Queue.get_keys('test')
+        keys = Queue.get_waiting_keys('test')
         self.assertEqual(keys, [q1.waiting.key, q0.waiting.key])
 
         # tests for foobar
-        keys = Queue.get_keys('foobar')
+        keys = Queue.get_waiting_keys('foobar')
         self.assertEqual(keys, [qx.waiting.key])
 
         # tests for non existing name
-        keys = Queue.get_keys('qux')
+        keys = Queue.get_waiting_keys('qux')
         self.assertEqual(keys, [])
+
+    def test_get_all_by_priority_should_return_all_queues_for_a_name(self):
+        q0 = Queue.get_queue(name='test', priority=0)
+        q10 = Queue.get_queue(name='test', priority=10)
+        q5 = Queue.get_queue(name='test', priority=5)
+
+        queues = [q.pk.get() for q in Queue.get_all_by_priority('test')]
+
+        self.assertEqual(queues, [q10.pk.get(), q5.pk.get(), q0.pk.get()])
 
     def test_extended_queue_can_accept_other_fields(self):
         class ExtendedQueue(Queue):
@@ -63,6 +75,123 @@ class QueuesTest(LimpydBaseTest):
         self.assertEqual(queue.foo.get(), 'FOO')
         self.assertEqual(queue.bar.get(), 'BAR')
 
+    def test_count_waiting_jobs_should_return_the_number_of_waiting_jobs(self):
+        self.assertEqual(Queue.count_waiting_jobs('test'), 0)
+        Job.add_job(identifier='job:1', queue_name='test')
+        self.assertEqual(Queue.count_waiting_jobs('test'), 1)
+        Job.add_job(identifier='job:2', queue_name='test', delayed_for=5)
+        self.assertEqual(Queue.count_waiting_jobs('test'), 1)
+
+    def test_count_delayed_jobs_should_return_the_number_of_delayed_jobs(self):
+        self.assertEqual(Queue.count_delayed_jobs('test'), 0)
+        Job.add_job(identifier='job:1', queue_name='test', delayed_for=5)
+        self.assertEqual(Queue.count_delayed_jobs('test'), 1)
+        Job.add_job(identifier='job:2', queue_name='test')
+        self.assertEqual(Queue.count_delayed_jobs('test'), 1)
+
+    def test_first_delayed_should_return_the_first_delayed_job_to_be_ready(self):
+        Job.add_job(identifier='job:1', queue_name='test', delayed_for=5)
+        job2 = Job.add_job(identifier='job:2', queue_name='test', delayed_for=1)
+
+        queue = Queue.get_queue(name='test')
+        attended_timestamp = datetime_to_score(parse(job2.delayed_until.hget()))
+
+        job_pk, timestamp = queue.first_delayed
+        self.assertEqual(job_pk, job2.pk.get())
+        self.assertEqual(timestamp, attended_timestamp)
+
+        timestamp = queue.first_delayed_time
+        self.assertEqual(timestamp, attended_timestamp)
+
+    def test_delay_job_should_add_the_job_to_the_delayed_sortedset(self):
+        delayed_until = datetime.utcnow() + timedelta(seconds=1)
+        timestamp = datetime_to_score(delayed_until)
+
+        job = Job(identifier='job:1', delayed_until=str(delayed_until))
+
+        queue = Queue.get_queue(name='test')
+        queue.delay_job(job.pk.get(), delayed_until)
+
+        delayed_jobs = queue.delayed.zrange(0, -1, withscores=True)
+        self.assertEqual(delayed_jobs, [(job.pk.get(), timestamp)])
+
+        # test a non-delayed job
+        job2 = Job(identifier='job:2')
+        queue.enqueue_job(job2.pk.get())
+
+        delayed_jobs = queue.delayed.zrange(0, -1, withscores=True)
+        self.assertEqual(delayed_jobs, [(job.pk.get(), timestamp)])
+
+    def test_enqueue_job_should_add_the_job_to_the_waiting_list(self):
+        job = Job(identifier='job:1')
+
+        queue = Queue.get_queue(name='test')
+        queue.enqueue_job(job.pk.get())
+
+        waiting_jobs = queue.waiting.lmembers()
+        self.assertEqual(waiting_jobs, [job.pk.get()])
+
+        # test a delayed job
+        delayed_until = datetime.utcnow() + timedelta(seconds=1)
+        job2 = Job(identifier='job:2', delayed_until=str(delayed_until))
+        queue.delay_job(job2.pk.get(), delayed_until)
+
+        waiting_jobs = queue.waiting.lmembers()
+        self.assertEqual(waiting_jobs, [job.pk.get()])
+
+    def test_enqueue_job_can_prepend_jobs(self):
+        queue = Queue.get_queue(name='test')
+
+        job = Job(identifier='job:1')
+        queue.enqueue_job(job.pk.get())
+        waiting_jobs = queue.waiting.lmembers()
+        self.assertEqual(waiting_jobs, [job.pk.get()])
+
+        job2 = Job(identifier='job:2')
+        queue.enqueue_job(job2.pk.get())
+        waiting_jobs = queue.waiting.lmembers()
+        self.assertEqual(waiting_jobs, [job.pk.get(), job2.pk.get()])
+
+        job3 = Job(identifier='job:3')
+        queue.enqueue_job(job3.pk.get(), prepend=True)
+        waiting_jobs = queue.waiting.lmembers()
+        self.assertEqual(waiting_jobs, [job3.pk.get(), job.pk.get(), job2.pk.get()])
+
+    def test_requeue_delayed_jobs_put_back_ready_delayed_jobs_to_the_waiting_list(self):
+        queue = Queue.get_queue(name='test')
+
+        job1 = Job.add_job(identifier='job:1', queue_name='test', delayed_for=10)
+        job2 = Job.add_job(identifier='job:2', queue_name='test', delayed_for=1)
+
+        self.assertEqual(Queue.count_waiting_jobs('test'), 0)
+        self.assertEqual(Queue.count_delayed_jobs('test'), 2)
+
+        self.assertEqual(job1.status.hget(), STATUSES.DELAYED)
+        self.assertEqual(job2.status.hget(), STATUSES.DELAYED)
+
+        # must not move any jobs, too soon
+        queue.requeue_delayed_jobs(job_model=Job)
+        self.assertEqual(Queue.count_waiting_jobs('test'), 0)
+        self.assertEqual(Queue.count_delayed_jobs('test'), 2)
+
+        self.assertEqual(job1.status.hget(), STATUSES.DELAYED)
+        self.assertEqual(job2.status.hget(), STATUSES.DELAYED)
+
+        sleep(1)
+
+        # now we should have one job in the waiting list
+        queue.requeue_delayed_jobs(job_model=Job)
+        self.assertEqual(Queue.count_waiting_jobs('test'), 1)
+        self.assertEqual(Queue.count_delayed_jobs('test'), 1)
+
+        self.assertEqual(job1.status.hget(), STATUSES.DELAYED)
+        self.assertEqual(job2.status.hget(), STATUSES.WAITING)
+
+        waiting_jobs = queue.waiting.lmembers()
+        self.assertEqual(waiting_jobs, [job2.pk.get()])
+        delayed_jobs = queue.delayed.zrange(0, -1, withscores=True)
+        self.assertEqual(delayed_jobs[0][0], job1.pk.get())
+
 
 class JobsTests(LimpydBaseTest):
 
@@ -75,12 +204,12 @@ class JobsTests(LimpydBaseTest):
         job = Job.add_job(identifier='job:1', queue_name='test', priority=5)
 
         # count queues
-        keys = Queue.get_keys('test')
+        keys = Queue.get_waiting_keys('test')
         self.assertEqual(len(keys), 1)
 
         # get the new queue, should not create it (number of keys should be 1)
         queue = Queue.get_queue(name='test', priority=5)
-        keys = Queue.get_keys('test')
+        keys = Queue.get_waiting_keys('test')
         self.assertEqual(len(keys), 1)
 
         # check that the job is in the queue
@@ -89,6 +218,48 @@ class JobsTests(LimpydBaseTest):
 
         # ... with the correct status and priority
         self.assert_job_status_and_priority(job, STATUSES.WAITING, '5')
+
+    def test_invalid_type_for_delayed_for_argument_of_add_job_should_raise(self):
+        with self.assertRaises(ValueError):
+            job = Job.add_job(identifier='job:1', queue_name='test', delayed_for='foo')
+
+    def test_adding_a_job_with_delayed_for_should_add_the_job_in_the_delayed_list(self):
+        queue = Queue.get_queue(name='test')
+
+        job = Job.add_job(identifier='job:1', queue_name='test', delayed_for=5)
+        self.assertEqual(job.status.hget(), STATUSES.DELAYED)
+        self.assertEqual(queue.waiting.llen(), 0)
+        self.assertEqual(queue.delayed.zcard(), 1)
+
+        job2 = Job.add_job(identifier='job:2', queue_name='test', delayed_for=5.5)
+        self.assertEqual(job2.status.hget(), STATUSES.DELAYED)
+        self.assertEqual(queue.waiting.llen(), 0)
+        self.assertEqual(queue.delayed.zcard(), 2)
+
+        job3 = Job.add_job(identifier='job:3', queue_name='test', delayed_for=timedelta(seconds=5))
+        self.assertEqual(job3.status.hget(), STATUSES.DELAYED)
+        self.assertEqual(queue.waiting.llen(), 0)
+        self.assertEqual(queue.delayed.zcard(), 3)
+
+    def test_invalid_type_for_delayed_until_argument_of_add_job_should_raise(self):
+        with self.assertRaises(ValueError):
+            job = Job.add_job(identifier='job:1', queue_name='test', delayed_until='foo')
+
+    def test_adding_a_job_with_delayed_until_in_the_future_should_add_the_job_in_the_delayed_list(self):
+        queue = Queue.get_queue(name='test')
+
+        job = Job.add_job(identifier='job:1', queue_name='test', delayed_until=datetime.utcnow() + timedelta(seconds=5))
+        self.assertEqual(job.status.hget(), STATUSES.DELAYED)
+        self.assertEqual(queue.waiting.llen(), 0)
+        self.assertEqual(queue.delayed.zcard(), 1)
+
+    def test_adding_a_job_with_delayed_until_not_in_the_future_should_add_the_job_in_the_waiting_list(self):
+        queue = Queue.get_queue(name='test')
+
+        job = Job.add_job(identifier='job:1', queue_name='test', delayed_until=datetime.utcnow() - timedelta(seconds=5))
+        self.assertEqual(job.status.hget(), STATUSES.WAITING)
+        self.assertEqual(queue.waiting.llen(), 1)
+        self.assertEqual(queue.delayed.zcard(), 0)
 
     def test_adding_an_existing_job_should_do_nothing(self):
         job1 = Job.add_job(identifier='job:1', queue_name='test', priority=3)
@@ -231,17 +402,72 @@ class JobsTests(LimpydBaseTest):
         self.assertEqual(queue.waiting.llen(), 1)
         self.assertEqual(default_queue.waiting.llen(), 0)
 
+    def test_enqueue_or_delay_should_delay_if_in_the_future(self):
+        queue = Queue.get_queue(name='test', priority=1)
+        job = Job(identifier='job:1')
+        delayed_until = datetime.utcnow() + timedelta(seconds=5)
+        job.enqueue_or_delay('test', 1, delayed_until=delayed_until)
+        self.assertEqual(queue.delayed.zcard(), 1)
+        self.assertEqual(queue.waiting.llen(), 0)
+        self.assertEqual(job.delayed_until.hget(), str(delayed_until))
+        self.assertEqual(job.status.hget(), STATUSES.DELAYED)
+        self.assertEqual(job.priority.hget(), '1')
+
+    def test_enqueue_or_delay_should_enqueue_if_not_in_the_future(self):
+        queue = Queue.get_queue(name='test', priority=1)
+
+        job = Job(identifier='job:1')
+        job.enqueue_or_delay('test', 1)
+        self.assertEqual(queue.delayed.zcard(), 0)
+        self.assertEqual(queue.waiting.llen(), 1)
+        self.assertEqual(job.delayed_until.hget(), None)
+        self.assertEqual(job.status.hget(), STATUSES.WAITING)
+        self.assertEqual(job.priority.hget(), '1')
+
+        job2 = Job(identifier='job:2')
+        delayed_until = datetime.utcnow() - timedelta(seconds=5)  # the past !
+        job2.enqueue_or_delay('test', 1, delayed_until=delayed_until)
+        self.assertEqual(queue.delayed.zcard(), 0)
+        self.assertEqual(queue.waiting.llen(), 2)
+        self.assertEqual(job2.delayed_until.hget(), None)
+        self.assertEqual(job2.status.hget(), STATUSES.WAITING)
+        self.assertEqual(job2.priority.hget(), '1')
+
+    def test_duration_property_should_return_elapsed_time_during_start_and_end(self):
+        job = Job(identifier='job:1')
+        self.assertIsNone(job.duration)
+
+        start = datetime.utcnow()
+        job.start.hset(str(start))
+        self.assertIsNone(job.duration)
+
+        end = start + timedelta(seconds=5)
+        job.end.hset(str(end))
+        self.assertEqual(job.duration, timedelta(seconds=5))
+
+        job.start.delete()
+        self.assertIsNone(job.duration)
+
     def test_a_job_not_in_error_couldnt_be_requeued(self):
         job = Job.add_job(identifier='job:1', queue_name='test')
         with self.assertRaises(LimpydJobsException):
             job.requeue('test')
 
-    def test_a_job_not_in_error_could_be_requeued(self):
+    def test_a_job_in_error_could_be_requeued(self):
         job = Job(identifier='job:1', status=STATUSES.ERROR)
         job.requeue('test')
         queue = Queue.get_queue('test')
         self.assertEqual(queue.waiting.llen(), 1)
+        self.assertEqual(queue.delayed.zcard(), 0)
         self.assertEqual(job.status.hget(), STATUSES.WAITING)
+
+    def test_requeuing_a_job_with_a_delay_delta_should_put_it_in_the_delayed_lits(self):
+        job = Job(identifier='job:1', status=STATUSES.ERROR)
+        job.requeue('test', requeue_delay_delta=5)
+        queue = Queue.get_queue('test')
+        self.assertEqual(queue.waiting.llen(), 0)
+        self.assertEqual(queue.delayed.zcard(), 1)
+        self.assertEqual(job.status.hget(), STATUSES.DELAYED)
 
 
 class ErrorsTest(LimpydBaseTest):
@@ -295,6 +521,17 @@ class ErrorsTest(LimpydBaseTest):
         self.assertEqual(error.time.hget(), '22:58:56')
         self.assertEqual(error.datetime, when)
         self.assertEqual(list(Error.collection(date='2012-09-29')), [error.pk.get()])
+
+    def test_add_error_should_store_the_traceback(self):
+        job = Job.add_job(identifier='job:1', queue_name='test')
+
+        try:
+            foo = bar
+        except Exception, e:
+            trace = traceback.format_exc()
+
+        error = Error.add_error(queue_name='test', job=job, error=e, trace=trace)
+        self.assertIn("NameError: global name 'bar' is not defined", error.traceback.hget())
 
     def test_extended_error_can_accept_other_fields(self):
         class ExtendedError(Error):

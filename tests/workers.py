@@ -54,8 +54,10 @@ class WorkerArgumentsTest(LimpydBaseTest):
         self.assertEqual(worker.terminate_gracefuly, True)
         self.assertEqual(worker.timeout, 30)
         self.assertEqual(worker.fetch_priorities_delay, 25)
+        self.assertEqual(worker.fetch_delayed_delay, 25)
         self.assertEqual(worker.requeue_times, 0)
         self.assertEqual(worker.requeue_priority_delta, -1)
+        self.assertEqual(worker.requeue_delay_delta, 30)
 
     def test_worker_arguements_should_be_saved(self):
         def callback(job, queue):
@@ -74,8 +76,10 @@ class WorkerArgumentsTest(LimpydBaseTest):
                     save_errors=False,
                     timeout=20,
                     fetch_priorities_delay=15,
+                    fetch_delayed_delay=15,
                     requeue_times=1,
-                    requeue_priority_delta=-2
+                    requeue_priority_delta=-2,
+                    requeue_delay_delta=20
                 )
 
         self.assertEqual(worker.name, 'test')
@@ -90,8 +94,10 @@ class WorkerArgumentsTest(LimpydBaseTest):
         self.assertEqual(worker.terminate_gracefuly, False)
         self.assertEqual(worker.timeout, 20)
         self.assertEqual(worker.fetch_priorities_delay, 15)
+        self.assertEqual(worker.fetch_delayed_delay, 15)
         self.assertEqual(worker.requeue_times, 1)
         self.assertEqual(worker.requeue_priority_delta, -2)
+        self.assertEqual(worker.requeue_delay_delta, 20)
 
     def test_worker_subclass_attributes_should_be_used(self):
         class TestWorker(Worker):
@@ -106,8 +112,10 @@ class WorkerArgumentsTest(LimpydBaseTest):
             save_errors = False
             timeout = 20
             fetch_priorities_delay = 15
+            fetch_delayed_delay = 15
             requeue_times = 1
             requeue_priority_delta = -2
+            requeue_delay_delta = 20
 
         worker = TestWorker()
 
@@ -122,8 +130,10 @@ class WorkerArgumentsTest(LimpydBaseTest):
         self.assertEqual(worker.terminate_gracefuly, False)
         self.assertEqual(worker.timeout, 20)
         self.assertEqual(worker.fetch_priorities_delay, 15)
+        self.assertEqual(worker.fetch_delayed_delay, 15)
         self.assertEqual(worker.requeue_times, 1)
         self.assertEqual(worker.requeue_priority_delta, -2)
+        self.assertEqual(worker.requeue_delay_delta, 20)
 
     def test_worker_subclass_attributes_should_be_overriden_by_arguments(self):
         class OtherTestQueue(Queue):
@@ -147,8 +157,10 @@ class WorkerArgumentsTest(LimpydBaseTest):
             save_errors = False
             timeout = 20
             fetch_priorities_delay = 15
+            fetch_delayed_delay = 15
             requeue_times = 1
             requeue_priority_delta = -2
+            requeue_delay_delta = 20
 
         worker = Worker(
                     name='testfoo',
@@ -162,8 +174,10 @@ class WorkerArgumentsTest(LimpydBaseTest):
                     save_errors=True,
                     timeout=40,
                     fetch_priorities_delay=10,
+                    fetch_delayed_delay=10,
                     requeue_times=2,
-                    requeue_priority_delta=-3
+                    requeue_priority_delta=-3,
+                    requeue_delay_delta=15
                 )
 
         self.assertEqual(worker.name, 'testfoo')
@@ -177,8 +191,10 @@ class WorkerArgumentsTest(LimpydBaseTest):
         self.assertEqual(worker.terminate_gracefuly, True)
         self.assertEqual(worker.timeout, 40)
         self.assertEqual(worker.fetch_priorities_delay, 10)
+        self.assertEqual(worker.fetch_delayed_delay, 10)
         self.assertEqual(worker.requeue_times, 2)
         self.assertEqual(worker.requeue_priority_delta, -3)
+        self.assertEqual(worker.requeue_delay_delta, 15)
 
     def test_bad_model_should_be_rejected(self):
         class FooBar(object):
@@ -439,13 +455,29 @@ class WorkerRunTest(LimpydBaseTest):
     def test_job_in_error_is_automatically_requeued_if_asked(self):
         job = Job.add_job(identifier='job:1', queue_name='test')
         Queue.get_queue(name='test')
-        worker = Worker(name='test', max_loops=2, requeue_times=2, timeout=1, fetch_priorities_delay=1)  # no callback
+        worker = Worker(name='test', max_loops=2, requeue_times=2, timeout=1,
+                        fetch_priorities_delay=1, fetch_delayed_delay=1,
+                        requeue_delay_delta=0)  # no callback
         worker.run()
 
         self.assertEqual(job.tries.hget(), "2")
         self.assertEqual(job.status.hget(), STATUSES.WAITING)
         queue = Queue.get_queue(name='test', priority=-2)  # priority decreased 2 times
         self.assertEqual(queue.waiting.llen(), 1)
+
+    def test_job_in_error_should_be_delayed_if_asked(self):
+        job = Job.add_job(identifier='job:1', queue_name='test')
+        Queue.get_queue(name='test')
+        worker = Worker(name='test', max_loops=1, requeue_times=2, timeout=1,
+                        fetch_priorities_delay=1, fetch_delayed_delay=1,
+                        requeue_delay_delta=1)  # no callback
+        worker.run()
+
+        self.assertEqual(job.tries.hget(), "1")
+        self.assertEqual(job.status.hget(), STATUSES.DELAYED)
+        queue = Queue.get_queue(name='test', priority=-2)  # priority decreased 2 times
+        self.assertEqual(queue.waiting.llen(), 0)
+        self.assertEqual(queue.delayed.zcard(), 0)
 
     def test_run_ended_method_should_be_called(self):
         class TestWorker(Worker):
@@ -575,6 +607,46 @@ class WorkerRunTest(LimpydBaseTest):
         queue_1 = Queue.get_queue('test', 1)
         self.assertEqual(worker.keys, [queue_1.waiting.key, queue_0.waiting.key])
         self.assertEqual(worker.num_loops, 2)
+
+    def test_delayed_jobs_should_be_queued_after_fetch_delayed_delay(self):
+
+        class TestWorker(Worker):
+            timeout = 1
+            max_loops = 1
+            fetch_delayed_delay = 0.5
+
+            def execute(self, job, queue):
+                pass
+
+        # add a first job
+        job = Job.add_job(identifier='job:1', queue_name='test', delayed_for=1)
+        worker = TestWorker('test')
+
+        class Thread(threading.Thread):
+            def run(self):
+                worker.run()
+
+        # launch the worker
+        thread = Thread()
+        thread.start()
+        time.sleep(0.2)
+
+        # we should have one job in the delayed queue
+        queue_0 = Queue.get_queue('test')
+        self.assertEqual(queue_0.waiting.llen(), 0)
+        self.assertEqual(queue_0.delayed.zcard(), 1)
+        self.assertEqual(worker.num_loops, 0)
+        self.assertEqual(job.status.hget(), STATUSES.DELAYED)
+
+        # wait for the worker to fetch new keys (at least "timeout" seconds)
+        time.sleep(2)
+
+        # now the job must have been executed
+        self.assertEqual(queue_0.waiting.llen(), 0)
+        self.assertEqual(queue_0.delayed.zcard(), 0)
+        self.assertEqual(queue_0.success.llen(), 1)
+        self.assertEqual(worker.num_loops, 1)
+        self.assertEqual(job.status.hget(), STATUSES.SUCCESS)
 
     def test_blpop_timeout(self):
         class TestWorker(Worker):
@@ -778,6 +850,16 @@ class WorkerConfigArgumentsTest(WorkerConfigBaseTest):
         with self.assertSystemExit(in_stderr="must be a positive integer"):
             WorkerConfig(self.mkargs('--fetch-priorities-delay=-1'))
 
+    def test_fetch_delayed_delay_argument(self):
+        conf = WorkerConfig(self.mkargs('--fetch-delayed-delay=10'))
+        self.assertEqual(conf.options.fetch_delayed_delay, 10)
+
+        with self.assertSystemExit(in_stderr="option --fetch-delayed-delay: invalid integer value: 'none'"):
+            WorkerConfig(self.mkargs('--fetch-delayed-delay=none'))
+
+        with self.assertSystemExit(in_stderr="must be a positive integer"):
+            WorkerConfig(self.mkargs('--fetch-delayed-delay=-1'))
+
     def test_requeue_times_argument(self):
         conf = WorkerConfig(self.mkargs('--requeue-times=3'))
         self.assertEqual(conf.options.requeue_times, 3)
@@ -794,6 +876,16 @@ class WorkerConfigArgumentsTest(WorkerConfigBaseTest):
 
         with self.assertSystemExit(in_stderr="option --requeue-priority-delta: invalid integer value: 'none'"):
             WorkerConfig(self.mkargs('--requeue-priority-delta=none'))
+
+    def test_requeue_delay_delta_argument(self):
+        conf = WorkerConfig(self.mkargs('--requeue-delay-delta=20'))
+        self.assertEqual(conf.options.requeue_delay_delta, 20)
+
+        with self.assertSystemExit(in_stderr="option --requeue-delay-delta: invalid integer value: 'none'"):
+            WorkerConfig(self.mkargs('--requeue-delay-delta=none'))
+
+        with self.assertSystemExit(in_stderr="must be a positive integer (including 0)"):
+            WorkerConfig(self.mkargs('--requeue-delay-delta=-1'))
 
     def test_database_argument(self):
         conf = WorkerConfig(self.mkargs('--database=localhost:6379:15'))
@@ -851,10 +943,10 @@ class WorkerConfigRunTest(WorkerConfigBaseTest):
         self.assertEqual('test-script [init] queue=foo', conf.get_proc_title())
 
         conf.worker.status = 'waiting'
-        self.assertEqual('test-script [waiting] queue=foo loop=0/1000 waiting-jobs=0', conf.get_proc_title())
+        self.assertEqual('test-script [waiting] queue=foo loop=0/1000 waiting=0 delayed=0', conf.get_proc_title())
 
         conf.worker.end_forced = True
-        self.assertEqual('test-script [waiting - ending] queue=foo loop=0/1000 waiting-jobs=0', conf.get_proc_title())
+        self.assertEqual('test-script [waiting - ending] queue=foo loop=0/1000 waiting=0 delayed=0', conf.get_proc_title())
 
     def test_prepare_models(self):
         conf = WorkerConfig(self.mkargs('--name=foo --database=localhost:6379:13'
