@@ -10,7 +10,7 @@ Where to find it:
 
 * Github repository: https://github.com/twidi/redis-limpyd-jobs
 * Pypi package: https://pypi.python.org/pypi/redis-limpyd-jobs
-* Documentation: https://documentup.com/twidi/redis-limpyd-jobs
+* Documentation: http://documentup.com/twidi/redis-limpyd-jobs
 
 Note that you actually need the [redis-limpyd-extensions][] in addition to [redis-limpyd][] (both installed via pypi)
 
