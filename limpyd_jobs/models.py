@@ -147,7 +147,7 @@ class Queue(BaseJobsModel):
         )
         connection = self.get_connection()
 
-        if connection.exists('lock_key'):
+        if connection.exists(lock_key):
             # if locked, a worker is already on it, don't wait and exit
             return
 
