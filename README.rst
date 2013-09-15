@@ -1518,16 +1518,16 @@ You can disable it by passing the ``--no-title`` argument.
 Tests
 -----
 
-The ``redis-limpyd-jobs`` package is full tested (ahem, coverage 98% ).
+The ``redis-limpyd-jobs`` package is fully tested (coverage 100%).
 
 To run the tests, which are not installed via the ``setup.py`` file, you
 can do:
 
 ::
 
-    python run_tests.py
+    $ python run_tests.py
     [...]
-    Ran 97 tests in 13.174s
+    Ran 101 tests in 18.278s
 
 Or if you have ``nosetests`` installed:
 
