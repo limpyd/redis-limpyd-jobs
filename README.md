@@ -1073,6 +1073,26 @@ limpyd-jobs-worker#1566090 [terminated] queue=foo loop=10/1000 waiting=0 delayed
 You can disable it by passing the `--no-title` argument.
 
 
+## Tests
+
+The `redis-limpyd-jobs` package is full tested (ahem, coverage 98% ).
+
+To run the tests, which are not installed via the `setup.py` file, you can do:
+
+```
+python run_tests.py
+[...]
+Ran 97 tests in 13.174s
+```
+
+Or if you have `nosetests` installed:
+
+```
+nosetests
+```
+
+The `nosetests` configuration is provided in the `setup.cfg` file and include the coverage, if `nose-cov` is installed.
+
 ## Final words
 
 - you can see a full example in `example.py` (in the source, not in the installed package)

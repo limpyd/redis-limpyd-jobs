@@ -206,12 +206,6 @@ class Worker(object):
         """
         self._update_status_callbacks.append(callback)
 
-    def _remove_update_status_callback(self, callback):
-        """
-        Remove a callback from ones set to be called when the status is updated
-        """
-        self._update_status_callbacks.remove(callback)
-
     def wait_for_job(self):
         """
         Use a redis blocking list call to wait for a job, and return it.
@@ -603,18 +597,22 @@ class WorkerConfig(object):
 
     @staticmethod
     def _import_module(module_uri):
-        return __import__(module_uri, {}, {}, [''])
+        """
+        Replacement to import_module from importlib for python 2.6
+        """
+        return __import__(module_uri, {}, {}, [''])  # pragma: no cover
 
     @staticmethod
     def import_class(class_uri):
         """
         Import a class by string 'from.path.module.class'
+        To support python 2.6
         """
         try:
-            from importlib import import_module
-            callback = import_module
-        except ImportError:
-            callback = WorkerConfig._import_module
+            from importlib import import_module  # pragma: no cover
+            callback = import_module  # pragma: no cover
+        except ImportError:  # pragma: no cover
+            callback = WorkerConfig._import_module  # pragma: no cover
 
         parts = class_uri.split('.')
         class_name = parts.pop()
@@ -672,11 +670,6 @@ class WorkerConfig(object):
         """
         self.parser = self.create_parser()
         self.options, self.args = self.parser.parse_args(self.argv)
-
-        if self.argv[1:] in (['--help'], ['-h'], ['--version']):
-            # OptionParser already takes care of printing help and version.
-            # We should never pass here
-            return True
 
         self.do_imports()
 

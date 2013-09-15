@@ -4,6 +4,7 @@ import time
 import signal
 import sys
 from StringIO import StringIO
+from setproctitle import getproctitle
 
 from limpyd import __version__ as limpyd_version, fields
 from limpyd.contrib.database import PipelineDatabase
@@ -497,8 +498,10 @@ class WorkerRunTest(LimpydBaseTest):
         class TestWorker(Worker):
             def execute(self, job, queue):
                 """
-                Simulate a signal by directly calling the signal handler
+                Simulate a signal by directly calling the signal handler, and a
+                second that should simply be ignored
                 """
+                self.catch_end_signal(signal.SIGINT, None)
                 self.catch_end_signal(signal.SIGINT, None)
 
         Job.add_job('job:1', 'test')
@@ -608,6 +611,38 @@ class WorkerRunTest(LimpydBaseTest):
         self.assertEqual(worker.keys, [queue_1.waiting.key, queue_0.waiting.key])
         self.assertEqual(worker.num_loops, 2)
 
+    def test_worker_can_be_ended_even_before_starting(self):
+
+        class TestWorker(Worker):
+            timeout = 1
+            max_loops = 2
+            fetch_priorities_delay = 0.5
+
+            def execute(self, job, queue):
+                pass
+
+        # start a worker without jobs
+        worker = TestWorker('test')
+
+        class Thread(threading.Thread):
+            def run(self):
+                worker.run()
+
+        # launch the worker
+        thread = Thread()
+        thread.start()
+        time.sleep(0.2)
+
+        self.assertEqual(worker.status, 'starting')
+
+        # while the worker waits for queues, stop it
+        worker.catch_end_signal(signal.SIGINT, None)
+
+        time.sleep(1)
+
+        # it should now be finished
+        self.assertEqual(worker.status, 'terminated')
+
     def test_delayed_jobs_should_be_queued_after_fetch_delayed_delay(self):
 
         class TestWorker(Worker):
@@ -669,6 +704,36 @@ class WorkerRunTest(LimpydBaseTest):
         worker = TestWorker(name='test', timeout=1)
         worker.run()
         self.assertEqual(worker.num_loops, 0)
+
+    def test_a_deleted_job_should_be_managed(self):
+        job = Job.add_job(identifier='job:1', queue_name='test')
+
+        job.delete()
+
+        worker = Worker(name='test', timeout=1)
+
+        class Thread(threading.Thread):
+            def run(self):
+                worker.run()
+
+        self.assertEqual(worker.count_waiting_jobs(), 1)
+
+        # launch the worker
+        thread = Thread()
+        thread.start()
+        time.sleep(0.2)
+
+        # ask the worker to stop
+        worker.end_forced = True
+
+        # wait until the end of the loop
+        time.sleep(1.8)
+
+        # now it should be terminated, without any jobs in the queue, but without
+        # having doing any loop
+        self.assertEqual(worker.count_waiting_jobs(), 0)
+        self.assertEqual(worker.num_loops, 0)
+        self.assertEqual(worker.status, 'terminated')
 
 
 class WorkerConfigBaseTest(LimpydBaseTest):
@@ -942,8 +1007,8 @@ class WorkerConfigRunTest(WorkerConfigBaseTest):
         conf.prepare_worker()
         self.assertEqual('test-script [init] queue=foo', conf.get_proc_title())
 
-        conf.worker.status = 'waiting'
-        self.assertEqual('test-script [waiting] queue=foo loop=0/1000 waiting=0 delayed=0', conf.get_proc_title())
+        conf.worker.set_status('waiting')
+        self.assertEqual('test-script [waiting] queue=foo loop=0/1000 waiting=0 delayed=0', getproctitle())
 
         conf.worker.end_forced = True
         self.assertEqual('test-script [waiting - ending] queue=foo loop=0/1000 waiting=0 delayed=0', conf.get_proc_title())
@@ -957,3 +1022,18 @@ class WorkerConfigRunTest(WorkerConfigBaseTest):
         for model_name in ('job', 'queue', 'error'):
             model = getattr(conf.options, '%s_model' % model_name)
             self.assertEqual(model.database.connection_settings['db'], 13)
+
+    def test_simple_run(self):
+        conf = WorkerConfig(self.mkargs('--name=foo --dry-run --timeout=1 --fetch-priorities-delay=1'))
+
+        class Thread(threading.Thread):
+            def run(self):
+                conf.execute()
+
+        # launch the worker
+        thread = Thread()
+        thread.start()
+        time.sleep(1.5)
+
+        # because of dry-run, it should be terminated by now
+        self.assertEqual(conf.worker.status, 'terminated')

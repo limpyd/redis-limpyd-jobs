@@ -1,3 +1,9 @@
+V 0.0.7  2013-09-16
+
+    * Config for nosetests
+    * Full test coverage
+    * Correct a bug with delayed jobs if many workers
+
 V 0.0.6  2013-09-15
 
     * Jobs can be delayed (when created and/or requeued in case or error)

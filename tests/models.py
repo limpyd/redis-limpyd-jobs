@@ -192,6 +192,31 @@ class QueuesTest(LimpydBaseTest):
         delayed_jobs = queue.delayed.zrange(0, -1, withscores=True)
         self.assertEqual(delayed_jobs[0][0], job1.pk.get())
 
+    def test_requeue_delayed_jobs_should_abort_if_another_thread_works_on_it(self):
+        queue = Queue.get_queue(name='test')
+
+        # simulate a lock on this queue
+        lock_key = queue.make_key(
+            queue._name,
+            queue.pk.get(),
+            "requeue_all_delayed_ready_jobs",
+        )
+
+        queue.get_connection().set(lock_key, 1)
+
+        Job.add_job(identifier='job:1', queue_name='test', delayed_for=0.1)
+        self.assertEqual(Queue.count_waiting_jobs('test'), 0)
+        self.assertEqual(Queue.count_delayed_jobs('test'), 1)
+
+        # wait until the job should be ready
+        sleep(0.5)
+
+        queue.requeue_delayed_jobs(job_model=Job)
+
+        # the requeue must have done nothing
+        self.assertEqual(Queue.count_waiting_jobs('test'), 0)
+        self.assertEqual(Queue.count_delayed_jobs('test'), 1)
+
 
 class JobsTests(LimpydBaseTest):
 
@@ -221,7 +246,7 @@ class JobsTests(LimpydBaseTest):
 
     def test_invalid_type_for_delayed_for_argument_of_add_job_should_raise(self):
         with self.assertRaises(ValueError):
-            job = Job.add_job(identifier='job:1', queue_name='test', delayed_for='foo')
+            Job.add_job(identifier='job:1', queue_name='test', delayed_for='foo')
 
     def test_adding_a_job_with_delayed_for_should_add_the_job_in_the_delayed_list(self):
         queue = Queue.get_queue(name='test')
@@ -243,7 +268,12 @@ class JobsTests(LimpydBaseTest):
 
     def test_invalid_type_for_delayed_until_argument_of_add_job_should_raise(self):
         with self.assertRaises(ValueError):
-            job = Job.add_job(identifier='job:1', queue_name='test', delayed_until='foo')
+            Job.add_job(identifier='job:1', queue_name='test', delayed_until='foo')
+
+    def test_delayed_for_and_delayed_until_should_be_exclusive(self):
+        with self.assertRaises(ValueError):
+            Job.add_job(identifier='job:1', queue_name='test', delayed_for=5,
+                        delayed_until=datetime.utcnow()+timedelta(seconds=5))
 
     def test_adding_a_job_with_delayed_until_in_the_future_should_add_the_job_in_the_delayed_list(self):
         queue = Queue.get_queue(name='test')
