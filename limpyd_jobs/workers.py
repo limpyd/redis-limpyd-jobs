@@ -262,7 +262,7 @@ class Worker(object):
         The optional return value of this function will be passed to the
         job_success method.
         """
-        raise NotImplementedError('You must implement your own action')
+        return job.run(queue)
 
     def update_keys(self):
         """
@@ -360,7 +360,10 @@ class Worker(object):
                 self.log('Unable to get job: %s' % str(e), level='error')
             else:
                 self.num_loops += 1
-                identifier = 'pk:%s' % job.pk.get()  # default if failure
+                try:
+                    identifier = 'pk:%s' % job.pk.get()
+                except Exception, e:
+                    identifier = '??'
                 try:
                     self.set_status('running')
                     identifier, status = job.hmget('identifier', 'status')
@@ -384,7 +387,12 @@ class Worker(object):
                             self.job_success(job, queue, job_result)
                 except Exception, e:
                     self.log('[%s] unexpected error: %s' % (identifier, str(e)),
-                             level='error')
+                                                                 level='error')
+                    try:
+                        queue.errors.rpush(job.pk.get())
+                    except Exception, e:
+                        self.log('[%s] unable to add the error in the queue: %s'
+                         % (identifier, str(e)), level='error')
 
     def run_ended(self):
         """
@@ -415,12 +423,31 @@ class Worker(object):
 
         self.log(self.job_error_message(job, queue, exception, trace), level='error')
 
+        if hasattr(job, 'on_error'):
+            job.on_error(queue, exception, trace)
+
+        # requeue the job if needed
         if self.requeue_times and self.requeue_times >= int(job.tries.hget() or 0):
-            name, priority = queue.hmget('name', 'priority')
+            priority = queue.priority.hget()
+
             if self.requeue_priority_delta:
                 priority = int(priority) + self.requeue_priority_delta
-            job.requeue(name, priority, self.requeue_delay_delta, self.queue_model)
-            self.log(self.job_requeue_message(job, queue, priority))
+
+            self.requeue_job(job, queue, priority, delayed_for=self.requeue_delay_delta)
+
+    def requeue_job(self, job, queue, priority, delayed_for=None):
+        """
+        Requeue a job in a queue with the given priority, possibly delayed
+        """
+        job.requeue(queue_name=queue._cached_name,
+                    priority=priority,
+                    delayed_for=delayed_for,
+                    queue_model=self.queue_model)
+
+        if hasattr(job, 'on_requeued'):
+            job.on_requeued(queue)
+
+        self.log(self.job_requeue_message(job, queue))
 
     def job_error_message(self, job, queue, exception, trace=None):
         """
@@ -429,15 +456,15 @@ class Worker(object):
         return '[%s|%s] error: %s' % (queue._cached_name,
                                       job._cached_identifier, str(exception))
 
-    def job_requeue_message(self, job, queue, priority):
+    def job_requeue_message(self, job, queue):
         """
         Return the message to log when a job is requeued
         """
+        priority, delayed_until = job.hmget('priority', 'delayed_until')
 
-        msg = '[%s|%s] requeued with priority %'
-        args = [queue._cached_name, job._cached_identifier]
+        msg = '[%s|%s] requeued with priority %s'
+        args = [queue._cached_name, job._cached_identifier, priority]
 
-        delayed_until = job.delayed_until.hget()
         if delayed_until:
             msg += ', delayed until %s'
             args.append(delayed_until)
@@ -452,6 +479,8 @@ class Worker(object):
         job.hmset(end=str(datetime.utcnow()), status=STATUSES.SUCCESS)
         queue.success.rpush(job.pk.get())
         self.log(self.job_success_message(job, queue, job_result))
+        if hasattr(job, 'on_success'):
+            job.on_success(queue, job_result)
 
     def job_success_message(self, job, queue, job_result):
         """
@@ -467,6 +496,8 @@ class Worker(object):
         job.hmset(start=str(datetime.utcnow()), status=STATUSES.RUNNING)
         job.tries.hincrby(1)
         self.log(self.job_started_message(job, queue))
+        if hasattr(job, 'on_started'):
+            job.on_started(queue)
 
     def job_started_message(self, job, queue):
         """
@@ -479,6 +510,8 @@ class Worker(object):
         Called if a job can't be run: canceled, already running or done.
         """
         self.log(self.job_skipped_message(job, queue), level='warning')
+        if hasattr(job, 'on_skipped'):
+            job.on_skipped(queue)
 
     def job_skipped_message(self, job, queue):
         """

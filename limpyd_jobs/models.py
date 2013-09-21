@@ -1,6 +1,5 @@
-from datetime import datetime, timedelta
+from datetime import datetime
 from dateutil.parser import parse
-import time
 from redis.client import Lock
 
 from limpyd import fields
@@ -8,28 +7,9 @@ from limpyd.contrib import database, collection
 from limpyd_extensions import related
 
 from limpyd_jobs import STATUSES, LimpydJobsException
+from .utils import datetime_to_score, compute_delayed_until
 
 __all__ = ('BaseJobsModel', 'Queue', 'Job', 'Error')
-
-
-def datetime_to_score(dt):
-    """
-    Convert the given datetime object to be usable as a zset score
-    """
-    return time.mktime(dt.timetuple()) + dt.microsecond / 1000000.0
-
-
-def get_delta(value):
-    """
-    Return a timedelta object based on the value which can be a timedelta
-    or a number of seconds (int or float).
-    Raise an exception in all other cases.
-    """
-    if isinstance(value, (int, float)):
-        return timedelta(seconds=value)
-    elif isinstance(value, timedelta):
-        return value
-    raise Exception('Invalid delta')
 
 
 class BaseJobsModel(related.RelatedModel):
@@ -221,17 +201,7 @@ class Job(BaseJobsModel):
         """
 
         # check for delayed_for/delayed_until arguments
-        if delayed_until:
-            if delayed_for:
-                raise ValueError('delayed_until and delayed_for arguments are exclusive')
-            if not isinstance(delayed_until, datetime):
-                raise ValueError('Invalid delayed_until argument: must be a datetime object')
-
-        if delayed_for:
-            try:
-                delayed_until = datetime.utcnow() + get_delta(delayed_for)
-            except Exception:
-                raise ValueError('Invalid delayed_for argument: must be an int, a float or a timedelta object')
+        delayed_until = compute_delayed_until(delayed_for, delayed_until)
 
         # create the job or get an existing one
         job, created = cls.get_or_connect(identifier=identifier, status=STATUSES.WAITING)
@@ -262,6 +232,15 @@ class Job(BaseJobsModel):
 
         return job
 
+    def run(self, queue):
+        """
+        The method called by the work to do some stuff. Must be overriden to
+        your needs.
+        The optional return value of this function will be passed to the
+        job_success method of the worker.
+        """
+        raise NotImplementedError('You must implement your own action')
+
     @property
     def duration(self):
         """
@@ -274,7 +253,8 @@ class Job(BaseJobsModel):
         except:
             return None
 
-    def requeue(self, queue_name, priority=None, requeue_delay_delta=None, queue_model=None):
+    def requeue(self, queue_name, priority=None, delayed_for=None,
+                                        delayed_until=None, queue_model=None):
         """
         Requeue the job in the given queue if it has previously failed
         """
@@ -287,9 +267,7 @@ class Job(BaseJobsModel):
         if priority is None:
             priority = self.priority.hget()
 
-        delayed_until = None
-        if requeue_delay_delta:
-            delayed_until = datetime.utcnow() + get_delta(requeue_delay_delta)
+        delayed_until = compute_delayed_until(delayed_for, delayed_until)
 
         self.enqueue_or_delay(queue_name, priority, delayed_until, queue_model=queue_model)
 
@@ -317,6 +295,24 @@ class Job(BaseJobsModel):
             queue.delay_job(self.pk.get(), delayed_until)
         else:
             queue.enqueue_job(self.pk.get(), prepend)
+
+    # Methods below will be called only if defined, so we don't create them, but
+    # feel free to do so if you need to interact on jobs updates
+
+    # def on_started(self, queue):
+    #     pass
+
+    # def on_success(self, queue, result):
+    #     pass
+
+    # def on_error(self, queue, exception, trace):
+    #     pass
+
+    # def on_skipped(self, queue):
+    #     pass
+
+    # def on_requeued(self, queue):
+    #     pass
 
 
 class Error(BaseJobsModel):

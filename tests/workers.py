@@ -735,6 +735,108 @@ class WorkerRunTest(LimpydBaseTest):
         self.assertEqual(worker.num_loops, 0)
         self.assertEqual(worker.status, 'terminated')
 
+    def test_failure_during_the_main_loop_shouldnt_stop_the_worker(self):
+        class TestWorker(Worker):
+            def wait_for_job(self):
+                result = super(TestWorker, self).wait_for_job()
+                if result is not None:
+                    queue, job = result
+                    # deleting the job here will fail the hmget call on its fields
+                    if job.identifier.hget() == 'job:1':
+                        job.delete()
+                return result
+
+            def execute(self, job, queue):
+                pass
+
+        Job.add_job(identifier='job:1', queue_name='test')
+        Job.add_job(identifier='job:2', queue_name='test')
+        worker = TestWorker(name='test', timeout=1, max_loops=2)
+        worker.run()
+
+        self.assertEqual(worker.count_waiting_jobs(), 0)
+        self.assertEqual(worker.num_loops, 2)
+        self.assertEqual(worker.status, 'terminated')
+
+        queue = Queue.get_queue('test')
+        self.assertEqual(queue.waiting.llen(), 0)
+        self.assertEqual(queue.success.llen(), 1)
+        self.assertEqual(queue.errors.llen(), 0)
+
+    def test_job_on_success_is_called_if_defined(self):
+        class TestJobOnSuccess(Job):
+            foo = fields.InstanceHashField()
+
+            def on_success(self, queue, result):
+                self.foo.hset(result)
+
+            def run(self, queue):
+                return 'bar'
+
+        job = TestJobOnSuccess.add_job(identifier='job:1', queue_name='test')
+        worker = Worker(name='test', max_loops=1, job_model=TestJobOnSuccess)
+        worker.run()
+
+        self.assertEqual(job.foo.hget(), 'bar')
+
+    def test_job_on_started_is_called_if_defined(self):
+        class TestJobOnSarted(Job):
+            foo = fields.InstanceHashField()
+
+            def on_started(self, queue):
+                self.foo.hset('bar')
+
+            def run(self, queue):
+                pass
+
+        job = TestJobOnSarted.add_job(identifier='job:1', queue_name='test')
+        worker = Worker(name='test', max_loops=1, job_model=TestJobOnSarted)
+        worker.run()
+
+        self.assertEqual(job.foo.hget(), 'bar')
+
+    def test_job_on_error_is_called_if_defined(self):
+        class TestJobOnError(Job):
+            # run method not overriden, will fail
+            foo = fields.InstanceHashField()
+
+            def on_error(self, queue, exception, trace):
+                self.foo.hset('bar')
+
+        job = TestJobOnError.add_job(identifier='job:1', queue_name='test')
+        worker = Worker(name='test', max_loops=1, job_model=TestJobOnError)
+        worker.run()
+
+        self.assertEqual(job.foo.hget(), 'bar')
+
+    def test_job_on_skipped_is_called_if_defined(self):
+        class TestJobOnSkipped(Job):
+            foo = fields.InstanceHashField()
+
+            def on_skipped(self, queue):
+                self.foo.hset('bar')
+
+        job = TestJobOnSkipped.add_job(identifier='job:1', queue_name='test')
+        job.status.hset(STATUSES.CANCELED)
+        worker = Worker(name='test', max_loops=1, job_model=TestJobOnSkipped)
+        worker.run()
+
+        self.assertEqual(job.foo.hget(), 'bar')
+
+    def test_job_on_requeued_is_called_if_defined(self):
+        class TestJobOnRequeued(Job):
+            # run method not overriden, will fail
+            foo = fields.InstanceHashField()
+
+            def on_requeued(self, queue):
+                self.foo.hset('bar')
+
+        job = TestJobOnRequeued.add_job(identifier='job:1', queue_name='test')
+        worker = Worker(name='test', max_loops=1, job_model=TestJobOnRequeued, requeue_times=1)
+        worker.run()
+
+        self.assertEqual(job.foo.hget(), 'bar')
+
 
 class WorkerConfigBaseTest(LimpydBaseTest):
 

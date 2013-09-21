@@ -493,11 +493,29 @@ class JobsTests(LimpydBaseTest):
 
     def test_requeuing_a_job_with_a_delay_delta_should_put_it_in_the_delayed_lits(self):
         job = Job(identifier='job:1', status=STATUSES.ERROR)
-        job.requeue('test', requeue_delay_delta=5)
         queue = Queue.get_queue('test')
+        self.assertEqual(queue.waiting.llen(), 0)
+        self.assertEqual(queue.delayed.zcard(), 0)
+        job.requeue('test', delayed_for=5)
         self.assertEqual(queue.waiting.llen(), 0)
         self.assertEqual(queue.delayed.zcard(), 1)
         self.assertEqual(job.status.hget(), STATUSES.DELAYED)
+
+    def test_requeuing_a_job_with_a_datetime_should_put_it_in_the_delayed_lits(self):
+        job = Job(identifier='job:1', status=STATUSES.ERROR)
+        queue = Queue.get_queue('test')
+        self.assertEqual(queue.waiting.llen(), 0)
+        self.assertEqual(queue.delayed.zcard(), 0)
+        job.requeue('test', delayed_until=datetime.utcnow()+timedelta(seconds=5))
+        self.assertEqual(queue.waiting.llen(), 0)
+        self.assertEqual(queue.delayed.zcard(), 1)
+        self.assertEqual(job.status.hget(), STATUSES.DELAYED)
+
+    def test_run_method_should_raise_by_default(self):
+        job = Job.add_job(identifier='job:1', queue_name='test')
+        queue = Queue.get_queue('test')
+        with self.assertRaises(NotImplementedError):
+            job.run(queue)
 
 
 class ErrorsTest(LimpydBaseTest):
