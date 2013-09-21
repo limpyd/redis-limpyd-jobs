@@ -11,7 +11,7 @@ from limpyd_jobs import STATUSES, LimpydJobsException
 from .base import LimpydBaseTest
 
 
-class QueuesTest(LimpydBaseTest):
+class QueueTests(LimpydBaseTest):
 
     def count_queues(self):
         return len(Queue.collection())
@@ -218,7 +218,7 @@ class QueuesTest(LimpydBaseTest):
         self.assertEqual(Queue.count_delayed_jobs('test'), 1)
 
 
-class JobsTests(LimpydBaseTest):
+class JobTests(LimpydBaseTest):
 
     def assert_job_status_and_priority(self, job, status, priority):
         job_status, job_priority = job.hmget('status', 'priority')
@@ -517,17 +517,60 @@ class JobsTests(LimpydBaseTest):
         with self.assertRaises(NotImplementedError):
             job.run(queue)
 
+    def test_add_job_without_queue_name_should_use_the_class_one(self):
+        class JobWithQueueName(Job):
+            queue_name = 'test'
 
-class ErrorsTest(LimpydBaseTest):
+        JobWithQueueName.add_job(identifier='job:1')
+        queue = Queue.get_queue('test')
+
+        self.assertEqual(queue.waiting.llen(), 1)
+
+    def test_add_job_without_queue_name_should_fail_if_no_class_one(self):
+        with self.assertRaises(LimpydJobsException):
+            Job.add_job(identifier='job:1')
+
+    def test_requeue_without_queue_name_should_use_the_class_one(self):
+        class JobWithQueueName2(Job):
+            queue_name = 'test'
+
+        job = JobWithQueueName2(identifier='job:1', status=STATUSES.ERROR)
+        job.requeue(delayed_for=5)
+
+        queue = Queue.get_queue('test')
+        self.assertEqual(queue.delayed.zcard(), 1)
+
+    def test_requeue_without_queue_name_should_fail_if_no_class_one(self):
+        job = Job.add_job(identifier='job:1', queue_name='test')
+        with self.assertRaises(LimpydJobsException):
+            job.requeue()
+
+    def test_enqueue_or_delay_without_queue_name_should_use_the_class_one(self):
+        class JobWithQueueName3(Job):
+            queue_name = 'test'
+
+        job = JobWithQueueName3(identifier='job:1')
+        job.enqueue_or_delay(delayed_until=datetime.utcnow()+timedelta(seconds=5))
+
+        queue = Queue.get_queue('test')
+        self.assertEqual(queue.delayed.zcard(), 1)
+
+    def test_enqueue_or_delay_without_queue_name_should_fail_if_no_class_one(self):
+        job = Job.add_job(identifier='job:1', queue_name='test')
+        with self.assertRaises(LimpydJobsException):
+            job.enqueue_or_delay(delayed_until=datetime.utcnow()+timedelta(seconds=5))
+
+
+class ErrorTests(LimpydBaseTest):
 
     class ExceptionWithCode(Exception):
         def __init__(self, message, code):
-            super(ErrorsTest.ExceptionWithCode, self).__init__(message)
+            super(ErrorTests.ExceptionWithCode, self).__init__(message)
             self.message = message
             self.code = code
 
     def test_add_error_method_should_add_an_error_instance(self):
-        e = ErrorsTest.ExceptionWithCode('the answer', 42)
+        e = ErrorTests.ExceptionWithCode('the answer', 42)
         job = Job.add_job(identifier='job:1', queue_name='test')
         error1 = Error.add_error(queue_name='test', job=job, error=e)
         self.assertEqual(list(Error.collection()), [error1.pk.get()])
@@ -546,12 +589,12 @@ class ErrorsTest(LimpydBaseTest):
         error = Error.add_error(queue_name='test', job=job, error=e)
         self.assertEqual(error.type.hget(), 'Exception')
 
-        e = ErrorsTest.ExceptionWithCode('the answer', 42)
+        e = ErrorTests.ExceptionWithCode('the answer', 42)
         error = Error.add_error(queue_name='test', job=job, error=e)
         self.assertEqual(error.type.hget(), 'ExceptionWithCode')
 
     def test_new_error_save_job_pk_and_identifier_appart(self):
-        e = ErrorsTest.ExceptionWithCode('the answer', 42)
+        e = ErrorTests.ExceptionWithCode('the answer', 42)
         when = datetime(2012, 9, 29, 22, 58, 56)
         job = Job.add_job(identifier='job:1', queue_name='test')
         error = Error.add_error(queue_name='test', job=job, error=e, when=when)
@@ -561,7 +604,7 @@ class ErrorsTest(LimpydBaseTest):
         self.assertEqual(list(Error.collection(identifier=job.identifier.hget())), [error.pk.get()])
 
     def test_new_error_save_date_and_time_appart(self):
-        e = ErrorsTest.ExceptionWithCode('the answer', 42)
+        e = ErrorTests.ExceptionWithCode('the answer', 42)
         when = datetime(2012, 9, 29, 22, 58, 56)
         job = Job.add_job(identifier='job:1', queue_name='test')
         error = Error.add_error(queue_name='test', job=job, error=e, when=when)
@@ -583,11 +626,11 @@ class ErrorsTest(LimpydBaseTest):
 
     def test_extended_error_can_accept_other_fields(self):
         class ExtendedError(Error):
-            namespace = 'test-errorstest'
+            namespace = 'test-errortests'
             foo = fields.StringField()
             bar = fields.StringField()
 
-        e = ErrorsTest.ExceptionWithCode('the answer', 42)
+        e = ErrorTests.ExceptionWithCode('the answer', 42)
         job = Job.add_job(identifier='job:1', queue_name='test')
 
         # create a new error

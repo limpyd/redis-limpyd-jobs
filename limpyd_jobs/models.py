@@ -183,9 +183,22 @@ class Job(BaseJobsModel):
     delayed_until = fields.InstanceHashField()
 
     queue_model = Queue
+    queue_name = None
 
     @classmethod
-    def add_job(cls, identifier, queue_name, priority=0, queue_model=None,
+    def _get_queue_name(cls, queue_name=None):
+        """
+        Return the given queue_name if defined, else the class's one.
+        If both are None, raise an Exception
+        """
+        if queue_name is None and cls.queue_name is None:
+            raise LimpydJobsException("Queue's name not defined")
+        if queue_name is None:
+            return cls.queue_name
+        return queue_name
+
+    @classmethod
+    def add_job(cls, identifier, queue_name=None, priority=0, queue_model=None,
                 prepend=False, delayed_for=None, delayed_until=None,
                 **fields_if_new):
         """
@@ -205,6 +218,9 @@ class Job(BaseJobsModel):
 
         # create the job or get an existing one
         job, created = cls.get_or_connect(identifier=identifier, status=STATUSES.WAITING)
+
+        # check queue_name
+        queue_name = cls._get_queue_name(queue_name)
 
         # if the job already exists, and we want a higher priority or move it,
         # start by updating it
@@ -253,11 +269,13 @@ class Job(BaseJobsModel):
         except:
             return None
 
-    def requeue(self, queue_name, priority=None, delayed_for=None,
+    def requeue(self, queue_name=None, priority=None, delayed_for=None,
                                         delayed_until=None, queue_model=None):
         """
         Requeue the job in the given queue if it has previously failed
         """
+        queue_name = self._get_queue_name(queue_name)
+
         # we can only requeue a job that raised an error
         if self.status.hget() != STATUSES.ERROR:
             raise LimpydJobsException('Job cannot be requeued if not in ERROR status')
@@ -271,11 +289,20 @@ class Job(BaseJobsModel):
 
         self.enqueue_or_delay(queue_name, priority, delayed_until, queue_model=queue_model)
 
-    def enqueue_or_delay(self, queue_name, priority, delayed_until=None, prepend=False, queue_model=None):
+    def enqueue_or_delay(self, queue_name=None, priority=None,
+                         delayed_until=None, prepend=False, queue_model=None):
         """
         Will enqueue or delay the job depending of the delayed_until.
         """
-        fields = {'priority': priority}
+        queue_name = self._get_queue_name(queue_name)
+
+        fields = {}
+
+        if priority is not None:
+            fields['priority'] = priority
+        else:
+            priority = self.priority.hget()
+
         in_the_future = delayed_until and delayed_until > datetime.utcnow()
 
         if in_the_future:

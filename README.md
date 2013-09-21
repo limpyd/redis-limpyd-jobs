@@ -90,8 +90,6 @@ A Job stores all needed informations about a task to run.
 
 #### Job fields
 
-By default it contains a few fields:
-
 ##### `identifier`
 
 A string (`InstanceHashField`, indexed) to identify the job.
@@ -171,11 +169,13 @@ If a job is in error after its execution and if the worker has a positive `reque
 
 #### Job attributes
 
-There is only one attribute on the `Job` model, but it is very important:
-
 ##### `queue_model`
 
 When adding jobs via the `add_job` method, the model defined in this attribute will be used to get or create a queue. It's set by default to `Queue` but if you want to update it to your own model, you must subclass the `Job` model too, and update this attribute.
+
+##### `queue_name`
+
+`None` by default, can be set when overriding the `Job` class to avoid passing the `queue_name` argument to the job's methods (especially `add_job`)
 
 Note that if you don't subclass the `Job` model, you can pass the `queue_model` argument to the `add_job` method.
 
@@ -204,8 +204,8 @@ The `requeue` method allow a job to be put back in the waiting (or delayed) queu
 
 Arguments:
 
-- `queue_name`
-    The queue name in which to save the job.
+- `queue_name=None`
+    The queue name in which to save the job. If not defined, will use the job's class one. If both are undefined, an exception is raised.
 
 - `priority=None`
     The new priority of the new job. If not defined, the job will keep its actual priority.
@@ -216,8 +216,7 @@ Arguments:
 - `delayed_for=None`
     A number of seconds (as a int, float or a `timedelta` object) to wait before the job will be really requeued. It will compute the `delayed_until` field of the job.
 
-
-- `queue_model`
+- `queue_model=None`
     The model to use to store queues. By default, it's set to `Queue`, defined in the `queue_model` attribute of the `Job` model. If the argument is not set, the attribute will be used. Be careful to set it as attribute in your subclass, or as argument in `requeue` or the default `Queue` model will be used and jobs won't be saved in the expected queue model.
 
 ##### `enqueue_or_delay` (method)
@@ -226,19 +225,19 @@ It's the method, called in `add_job` and `requeue` that will either put the job 
 
 Arguments:
 
-- `queue_name`
-    The queue name in which to save the job.
+- `queue_name=None`
+    The queue name in which to save the job. If not defined, will use the job's class one. If both are undefined, an exception is raised.
 
-- `priority`
-    The new priority of the new job.
+- `priority=None`
+    The new priority of the new job. Use the job's actual one if not defined.
 
-- `delayed_until`
+- `delayed_until=None`
     The date (must be either a `datetime` object of the string representation of one) until when the job will remain in the delayed queue. It will not be processed until this date.
 
-- `prepend`
+- `prepend=False`
     Set to `True` to add the job at the start of the waiting list, to be the first to be executed  (only if not delayed)
 
-- `queue_model`
+- `queue_model=None`
     The model to use to store queues. See `add_job` and `requeue`.
 
 ##### `on_started` (ghost method)
@@ -293,8 +292,6 @@ This method, if defined on you job model (it's not there by default, ie "ghost")
 
 #### Job class methods
 
-The `Job` model provides a single, but very important, class method:
-
 ##### `add_job`
 
 The `add_job` class method is the main (and recommended) way to create a job. It will check if a job with the same identifier already exists in a waiting queue and if one is found, update its priority (and move it in the correct queue). If no existing job is found, a new one will be created and added to a queue.
@@ -304,8 +301,8 @@ Arguments:
 - `identifier`
     The value for the `identifier` field.
 
-- `queue_name`
-    The queue name in which to save the job.
+- `queue_name=None`
+    The queue name in which to save the job. If not defined, will use the class one. If both are undefined, an exception is raised.
 
 - `priority=0`
     The priority of the new job, or the new priority of an already existing job, if this priority is higher of the existing one.
@@ -331,8 +328,6 @@ If you use a subclass of the `Job` model, you can pass additional arguments to t
 A Queue stores a list of waiting jobs with a given priority, and keep a list of successful jobs and ones on error.
 
 #### Queue fields
-
-By default it contains a few fields:
 
 ##### `name`
 
@@ -415,8 +410,6 @@ Arguments:
     The model used for jobs.
 
 #### Queue class methods
-
-The `Queue` model provides a few class methods:
 
 ##### `get_queue`
 
@@ -516,8 +509,6 @@ A string (`InstanceHashField`) to store the string representation of the traceba
 This property returns a `datetime` object based on the content of the `date` and `time` fields of an `Error` object.
 
 #### Error class methods
-
-The `Error` model provides a single class method:
 
 ##### `add_error`
 
