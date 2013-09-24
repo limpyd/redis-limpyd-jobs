@@ -111,8 +111,6 @@ A Job stores all needed informations about a task to run.
 Job fields
 ^^^^^^^^^^
 
-By default it contains a few fields:
-
 ``identifier``
 ''''''''''''''
 
@@ -249,9 +247,6 @@ delay.
 Job attributes
 ^^^^^^^^^^^^^^
 
-There is only one attribute on the ``Job`` model, but it is very
-important:
-
 ``queue_model``
 '''''''''''''''
 
@@ -260,13 +255,18 @@ attribute will be used to get or create a queue. It's set by default to
 ``Queue`` but if you want to update it to your own model, you must
 subclass the ``Job`` model too, and update this attribute.
 
+``queue_name``
+''''''''''''''
+
+``None`` by default, can be set when overriding the ``Job`` class to
+avoid passing the ``queue_name`` argument to the job's methods
+(especially ``add_job``)
+
 Note that if you don't subclass the ``Job`` model, you can pass the
 ``queue_model`` argument to the ``add_job`` method.
 
 Job properties and methods
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-The ``Job`` model contains only one property, and one method:
 
 ``duration`` (property)
 '''''''''''''''''''''''
@@ -274,6 +274,21 @@ The ``Job`` model contains only one property, and one method:
 The ``duration`` property simply returns the time used to compute the
 job. The return value is a ``datetime.timedelta`` object if the
 ``start`` and ``end`` fields are set, or ``None`` on the other case.
+
+``run`` (method)
+''''''''''''''''
+
+It's the main method of the job, the only one you must override, to do
+some tuff when the job is executed by the worker.
+
+The return value of this method will be passed to the ``job_success`` of
+the worker, then, if defined, to the ``on_success`` method of the job.
+
+By default a ``NotImplemented`` error is raised.
+
+Arguments:
+
+-  ``queue``: The queue from which the job was fetched.
 
 ``requeue`` (method)
 ''''''''''''''''''''
@@ -283,18 +298,25 @@ delayed) queue when its execution failed.
 
 Arguments:
 
--  ``queue_name`` The queue name in which to save the job.
+-  ``queue_name=None`` The queue name in which to save the job. If not
+   defined, will use the job's class one. If both are undefined, an
+   exception is raised.
 
 -  ``priority=None`` The new priority of the new job. If not defined,
    the job will keep its actual priority.
 
--  ``requeue_delay_delta=None`` The number of seconds (or a
-   ``timedelta`` object) to wait before the job being really requeued
-   (it will set the ``delayed_until`` job's field)
+-  ``delayed_until=None`` Set this to a ``datetime`` object to set the
+   date on which the job will be really requeued. The real
+   ``delayed_until`` can also be set by passing the ``delayed_for``
+   argument.
 
--  ``queue_model`` The model to use to store queues. By default, it's
-   set to ``Queue``, defined in the ``queue_model`` attribute of the
-   ``Job`` model. If the argument is not set, the attribute will be
+-  ``delayed_for=None`` A number of seconds (as a int, float or a
+   ``timedelta`` object) to wait before the job will be really requeued.
+   It will compute the ``delayed_until`` field of the job.
+
+-  ``queue_model=None`` The model to use to store queues. By default,
+   it's set to ``Queue``, defined in the ``queue_model`` attribute of
+   the ``Job`` model. If the argument is not set, the attribute will be
    used. Be careful to set it as attribute in your subclass, or as
    argument in ``requeue`` or the default ``Queue`` model will be used
    and jobs won't be saved in the expected queue model.
@@ -309,24 +331,85 @@ job is delayed, else it's simply queued.
 
 Arguments:
 
--  ``queue_name`` The queue name in which to save the job.
+-  ``queue_name=None`` The queue name in which to save the job. If not
+   defined, will use the job's class one. If both are undefined, an
+   exception is raised.
 
--  ``priority`` The new priority of the new job.
+-  ``priority=None`` The new priority of the new job. Use the job's
+   actual one if not defined.
 
--  ``delayed_until`` The date (must be either a ``datetime`` object of
-   the string representation of one) until when the job will remain in
-   the delayed queue. It will not be processed until this date.
+-  ``delayed_until=None`` The date (must be either a ``datetime`` object
+   of the string representation of one) until when the job will remain
+   in the delayed queue. It will not be processed until this date.
 
--  ``prepend`` Set to ``True`` to add the job at the start of the
+-  ``prepend=False`` Set to ``True`` to add the job at the start of the
    waiting list, to be the first to be executed (only if not delayed)
 
--  ``queue_model`` The model to use to store queues. See ``add_job`` and
-   ``requeue``.
+-  ``queue_model=None`` The model to use to store queues. See
+   ``add_job`` and ``requeue``.
+
+``on_started`` (ghost method)
+'''''''''''''''''''''''''''''
+
+This method, if defined on you job model (it's not there by default, ie
+"ghost") is called when the job is fetched by the worker and about to be
+executed ("waiting" status)
+
+Arguments:
+
+-  ``queue``: The queue from which the job was fetched.
+
+``on_success`` (ghost method)
+'''''''''''''''''''''''''''''
+
+This method, if defined on you job model (it's not there by default, ie
+"ghost") is called by the worker when the job's execution was a success
+(it did not raise any exception).
+
+Arguments:
+
+-  ``queue``: The queue from which the job was fetched.
+
+-  ``result`` The data returned by the ``execute`` method of the worker,
+   which call and return the result of the ``run`` method of the job (or
+   the ``callback`` provided to the worker)
+
+``on_error`` (ghost method)
+'''''''''''''''''''''''''''
+
+This method, if defined on you job model (it's not there by default, ie
+"ghost") is called by the worker when the job's execution failed (an
+exception was raised)
+
+Arguments:
+
+-  ``queue``: The queue from which the job was fetched.
+
+-  ``exception``: The exception that was raised during the execution.
+
+-  ``traceback``: The traceback at the time of the exception, if the
+   ``save_tracebacks`` attribute of the worker was set to ``True``
+
+``on_skipped`` (ghost method)
+'''''''''''''''''''''''''''''
+
+This method, if defined on you job model (it's not there by default, ie
+"ghost") is called when the job, just fetched by the worker, could not
+be executed because of its status, not "waiting".
+
+-  ``queue``: The queue from which the job was fetched.
+
+``on_requeued`` (ghost method)
+''''''''''''''''''''''''''''''
+
+This method, if defined on you job model (it's not there by default, ie
+"ghost") is called by the worker when the job failed and has been
+requeued by the worker.
+
+-  ``queue``: The queue from which the job was fetched.
 
 Job class methods
 ^^^^^^^^^^^^^^^^^
-
-The ``Job`` model provides a single, but very important, class method:
 
 ``add_job``
 '''''''''''
@@ -341,7 +424,9 @@ Arguments:
 
 -  ``identifier`` The value for the ``identifier`` field.
 
--  ``queue_name`` The queue name in which to save the job.
+-  ``queue_name=None`` The queue name in which to save the job. If not
+   defined, will use the class one. If both are undefined, an exception
+   is raised.
 
 -  ``priority=0`` The priority of the new job, or the new priority of an
    already existing job, if this priority is higher of the existing one.
@@ -383,8 +468,6 @@ list of successful jobs and ones on error.
 
 Queue fields
 ^^^^^^^^^^^^
-
-By default it contains a few fields:
 
 ``name``
 ''''''''
@@ -454,8 +537,6 @@ The ``Queue`` model has no specific attributes.
 Queue properties and methods
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-The ``Queue`` model provides two properties and a few methods:
-
 ``first_delayed`` (property)
 ''''''''''''''''''''''''''''
 
@@ -509,8 +590,6 @@ Arguments:
 
 Queue class methods
 ^^^^^^^^^^^^^^^^^^^
-
-The ``Queue`` model provides a few class methods:
 
 ``get_queue``
 '''''''''''''
@@ -645,8 +724,6 @@ have filled it)
 Error properties and methods
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-There is only one property on the ``Error`` model:
-
 ``datetime``
 ''''''''''''
 
@@ -655,8 +732,6 @@ This property returns a ``datetime`` object based on the content of the
 
 Error class methods
 ^^^^^^^^^^^^^^^^^^^
-
-The ``Error`` model provides a single class method:
 
 ``add_error``
 '''''''''''''
@@ -699,7 +774,8 @@ The ``Worker`` class does all the logic, working with ``Queue`` and
 
 The main behavior is: - reading queue keys for the given name - waiting
 for a job available in the queue - executing the job - manage success or
-error - exit after a defined number of jobs
+error - exit after a defined number of jobs or a maximum duration (if
+defined), or when a ``SIGINT``/``SIGTERM`` signal is caught
 
 The class is split in many short methods so that you can subclass it to
 change/add/remove whatever you want.
@@ -777,6 +853,13 @@ lifetime, default to 1000. Note that after this number of loop, the
 worker ends (the ``run`` method cannot be executed again)
 
 The aim is to avoid memory leaks become too important.
+
+``max_duration``
+''''''''''''''''
+
+If defined, the worker will end when its ``run`` method was called for
+at least this number of seconds. By default it's set to ``None``, saying
+there is no maximum duration.
 
 ``terminate_gracefully``
 ''''''''''''''''''''''''
@@ -913,6 +996,25 @@ SIGINT/SIGTERM signal is caught.
 This boolean is set to ``True`` when a SIGINT/SIGTERM is caught (only if
 the ``terminate_gracefully`` is ``True``)
 
+``start_date``
+''''''''''''''
+
+``None`` by default, set to ``datetime.utcnow()`` when the ``run``
+method starts.
+
+``end_date``
+''''''''''''
+
+``None`` by default, set to ``datetime.utcnow()`` when the ``run``
+method ends.
+
+``wanted_end_date``
+'''''''''''''''''''
+
+None by default, it's computed to know when the worker must stop based
+on the ``start_date`` and ``max_duration``. It will always be ``None``
+if no ``max_duration`` is defined.
+
 ``connection``
 ''''''''''''''
 
@@ -935,10 +1037,11 @@ Signature:
         def __init__(self, name=None, callback=None,
                      queue_model=None, job_model=None, error_model=None,
                      logger_base_name=None, logger_level=None, save_errors=None,
-                     save_tracebacks=None, max_loops=None, terminate_gracefuly=None,
-                     timeout=None, fetch_priorities_delay=None,
-                     fetch_delayed_delay=None, requeue_times=None,
-                     requeue_priority_delta=None, requeue_delay_delta=None):
+                     save_tracebacks=None, max_loops=None, max_duration=None,
+                     terminate_gracefuly=None, timeout=None,
+                     fetch_priorities_delay=None, fetch_delayed_delay=None,
+                     requeue_times=None, requeue_priority_delta=None,
+                     requeue_delay_delta=None):
 
 Returns nothing.
 
@@ -1090,9 +1193,8 @@ Signature:
 Returns nothing by default.
 
 This method is called if no ``callback`` argument is provided when
-initiating the worker. But raises a ``NotImplementedError`` by default.
-To use it (without passing the ``callback`` argument), you must override
-it in your own subclass.
+initiating the worker and call the ``run`` method of the job, which
+raises a ``NotImplementedError`` by default.
 
 If the execution is successful, no return value is attended, but if any,
 it will be passed to the ``job_success`` method. And if an error
@@ -1188,8 +1290,8 @@ When a job is fetched in the ``run`` method, its status is checked. If
 it's not ``STATUSES.WAITING``, this ``job_skipped`` method is called,
 with two main arguments: the job and the queue in which it was found.
 
-The only thing done is to log the message returned by the
-``job_skipped_message`` method.
+This method logs the message returned by the ``job_skipped_message``
+method, then call, if defined, the ``on_skipped`` method of the job.
 
 ``job_skipped_message``
 '''''''''''''''''''''''
@@ -1219,7 +1321,8 @@ the callback (or the ``execute`` method if no ``callback`` is defined),
 with the job and the queue in which it was found.
 
 This method updates the ``start`` and ``status`` fields of the job, then
-log the message returned by ``job_started_message``.
+log the message returned by ``job_started_message`` and finally call, if
+defined, the ``on_started`` method of the job.
 
 ``job_started_message``
 '''''''''''''''''''''''
@@ -1250,7 +1353,8 @@ was found, and the return value of the callback method.
 
 This method updates the ``end`` and ``status`` fields of the job, moves
 the job into the ``success`` list of the queue, then log the message
-returned by ``job_success_message``.
+returned by ``job_success_message`` and finally call, if defined, the
+``on_success`` method of the job.
 
 ``job_success_message``
 '''''''''''''''''''''''
@@ -1282,10 +1386,12 @@ queue in which it was found, and the raised exception and, if
 This method updates the ``end`` and ``status`` fields of the job, moves
 the job into the ``error`` list of the queue, adds a new error object
 (if ``save_errors`` is ``True``), then log the message returned by
-``job_error_message``. If the ``requeue_times`` allows it, the job is
-requeued in the same queue with its priority lowered by 1 (defined by
-``requeue_priority_delta``, default to -1), then the message returned a
-call to ``job_requeue_message`` is logged.
+``job_error_message`` and call the ``on_error`` method of the job is
+called, if defined.
+
+And finally, if the ``requeue_times`` argument allows it (considering
+the ``tries`` attribute of the job, too), the ``requeue_job`` method is
+called.
 
 ``job_error_message``
 '''''''''''''''''''''
@@ -1305,11 +1411,10 @@ Signature:
 
 .. code:: python
 
-    def job_requeue_message(self, job, queue, priority):
+    def job_requeue_message(self, job, queue):
 
 Returns a string to be logged in ``job_error`` when the job was
-requeued. ``priority`` is the new job's priority (may have changed by
-applying ``requeue_priority_delta``)
+requeued.
 
 ``additional_error_fields``
 '''''''''''''''''''''''''''
@@ -1330,11 +1435,33 @@ use a subclass of the ``Error`` model, defined in ``error_model``.
 To pass these additional fields to the error object, you have to
 override this method in your own subclass.
 
+``requeue_job``
+'''''''''''''''
+
+.. code:: python
+
+    def requeue_job(self, job, queue, priority, delayed_for=None):
+
+Returns nothing.
+
+This method is called to requeue the job when its execution failed, and
+will call the ``requeue`` method of the job, then its ``requeued`` one,
+and finally will log the message returned by ``job_requeue_message``.
+
 ``id``
 ''''''
 
 It's a property returning a string identifying the current worker, used
 in logging to distinct log entries for each worker.
+
+``elapsed``
+'''''''''''
+
+It's a property returning, when running the time elapsed since when the
+``run`` started. When the ``run`` method ends, it's the time between
+``start_date`` and ``end_date``.
+
+If the ``run`` method is not called, it will be set to ``None``.
 
 ``log``
 '''''''
@@ -1460,6 +1587,9 @@ Instead of explaining all arguments, see below the result of the
                             Error model, e.g. --no-save-tracebacks
       --max-loops=MAX_LOOPS
                             Max number of jobs to run, e.g. --max-loops=100
+      --max-duration=MAX_DURATION
+                            Max duration of the worker, in seconds (None by
+                            default), e.g. --max-duration=3600
       --terminate-gracefuly
                             Intercept SIGTERM and SIGINT signals to stop
                             gracefuly, e.g. --terminate-gracefuly
