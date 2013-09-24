@@ -36,6 +36,8 @@ class Worker(object):
 
     # maximum number of loops to run
     max_loops = 1000
+    # max total duration of the worker
+    max_duration = None
     # max delay for blpop
     timeout = 30
     # minimum time in seconds between the update of keys to fetch
@@ -57,10 +59,11 @@ class Worker(object):
     def __init__(self, name=None, callback=None,
                  queue_model=None, job_model=None, error_model=None,
                  logger_base_name=None, logger_level=None, save_errors=None,
-                 save_tracebacks=None, max_loops=None, terminate_gracefuly=None,
-                 timeout=None, fetch_priorities_delay=None,
-                 fetch_delayed_delay=None, requeue_times=None,
-                 requeue_priority_delta=None, requeue_delay_delta=None):
+                 save_tracebacks=None, max_loops=None, max_duration=None,
+                 terminate_gracefuly=None, timeout=None,
+                 fetch_priorities_delay=None, fetch_delayed_delay=None,
+                 requeue_times=None, requeue_priority_delta=None,
+                 requeue_delay_delta=None):
         """
         Create the worker by saving arguments, doing some checks, preparing
         logger and signals management, and getting queues keys.
@@ -86,6 +89,10 @@ class Worker(object):
         self.callback = callback if callback is not None else self.execute
         if max_loops is not None:
             self.max_loops = max_loops
+        if max_duration is not None:
+            self.max_duration = max_duration
+        if self.max_duration:
+            self.max_duration = timedelta(seconds=self.max_duration)
         if terminate_gracefuly is not None:
             self.terminate_gracefuly = terminate_gracefuly
         if save_errors is not None:
@@ -117,6 +124,9 @@ class Worker(object):
 
         self.keys = []  # list of redis keys to listen
         self.num_loops = 0  # loops counter
+        self.start_date = None  # set when run is called
+        self.end_date = None  # set when run ends
+        self.wanted_end_date = None  # will be the end after which the worker must stop
         self.end_forced = False  # set it to True in "execute" to force stop just after
         self.status = None  # is set to None/waiting/running by the worker
         self.end_signal_caught = False  # internaly set to True if end signal caught
@@ -189,8 +199,9 @@ class Worker(object):
         """
         Return True if the worker must stop when the current loop is over.
         """
-        return self.terminate_gracefuly and self.end_signal_caught \
-            or self.num_loops >= self.max_loops or self.end_forced
+        return bool(self.terminate_gracefuly and self.end_signal_caught
+                 or self.num_loops >= self.max_loops or self.end_forced
+                 or self.wanted_end_date and datetime.utcnow() >= self.wanted_end_date)
 
     def set_status(self, status):
         """
@@ -303,6 +314,9 @@ class Worker(object):
         self.set_status('starting')
 
         must_stop = False
+        self.start_date = datetime.utcnow()
+        if self.max_duration:
+            self.wanted_end_date = self.start_date + self.max_duration
 
         # get keys or wait for queues available if no ones are yet
         self.update_keys()
@@ -322,9 +336,20 @@ class Worker(object):
             self._main_loop()
 
         self.set_status('terminated')
+        self.end_date = datetime.utcnow()
         self.run_ended()
         if self.terminate_gracefuly:
             self.stop_handling_end_signal()
+
+    @property
+    def elapsed(self):
+        """
+        Return a timedelta representation of the time passed sine the worker
+        was running.
+        """
+        if not self.start_date:
+            return None
+        return (self.end_date or datetime.utcnow()) - self.start_date
 
     def requeue_delayed_jobs(self):
         """
@@ -398,7 +423,8 @@ class Worker(object):
         """
         Called just after ending the run loop. Actually only do logging.
         """
-        self.log('Run terminated, with %d loops.' % self.num_loops)
+        self.log('Run terminated, with %d loops (duration=%s)' % (
+                                                self.num_loops, self.elapsed))
 
     def additional_error_fields(self, job, queue, exception, trace=None):
         """
@@ -581,6 +607,8 @@ class WorkerConfig(object):
 
         make_option('--max-loops', type='int', dest='max_loops',
             help='Max number of jobs to run, e.g. --max-loops=100'),
+        make_option('--max-duration', type='int', dest='max_duration',
+            help='Max duration of the worker, in seconds (None by default), e.g. --max-duration=3600'),
 
         make_option('--terminate-gracefuly', action='store_true', dest='terminate_gracefuly',
             help='Intercept SIGTERM and SIGINT signals to stop gracefuly, e.g. --terminate-gracefuly'),
@@ -623,7 +651,7 @@ class WorkerConfig(object):
     worker_options = ('name', 'job_model', 'queue_model', 'error_model',
                       'callback', 'logger_base_name', 'logger_level',
                       'save_errors', 'save_tracebacks', 'max_loops',
-                      'terminate_gracefuly', 'timeout',
+                      'max_duration', 'terminate_gracefuly', 'timeout',
                       'fetch_priorities_delay', 'fetch_delayed_delay',
                       'requeue_times', 'requeue_priority_delta',
                       'requeue_delay_delta')
@@ -721,6 +749,9 @@ class WorkerConfig(object):
 
         if self.options.max_loops is not None and self.options.max_loops < 0:
             self.parser.error('The max-loops argument (%s) must be a positive integer' % self.options.max_loops)
+
+        if self.options.max_duration is not None and self.options.max_duration < 0:
+            self.parser.error('The max-duration argument (%s) must be a positive integer' % self.options.max_duration)
 
         if self.options.timeout is not None and self.options.timeout < 0:
             self.parser.error('The timeout argument (%s) must be a positive integer (including 0)' % self.options.timeout)
@@ -876,6 +907,15 @@ class WorkerConfig(object):
 
             # and about the number of delayed jobs
             title_parts.append('delayed=%s' % self.worker.count_delayed_jobs())
+
+            # and about elapsed time
+            if self.worker.start_date:
+                duraiton_message = 'duration=%s'
+                duration_args = (timedelta(seconds=int(round(self.worker.elapsed.total_seconds()))), )
+                if self.worker.max_duration:
+                    duraiton_message += '/%s'
+                    duration_args += (self.worker.max_duration, )
+                title_parts.append(duraiton_message % duration_args)
 
         return ' '.join(title_parts)
 

@@ -5,6 +5,7 @@ import signal
 import sys
 from StringIO import StringIO
 from setproctitle import getproctitle
+from datetime import datetime, timedelta
 
 from limpyd import __version__ as limpyd_version, fields
 from limpyd.contrib.database import PipelineDatabase
@@ -51,6 +52,7 @@ class WorkerArgumentsTests(LimpydBaseTest):
         self.assertEqual(worker.logger, logging.getLogger('limpyd-jobs.test'))
         self.assertEqual(worker.logger.level, logging.ERROR)
         self.assertEqual(worker.max_loops, 1000)
+        self.assertIsNone(worker.max_duration)
         self.assertEqual(worker.save_errors, True)
         self.assertEqual(worker.terminate_gracefuly, True)
         self.assertEqual(worker.timeout, 30)
@@ -73,6 +75,7 @@ class WorkerArgumentsTests(LimpydBaseTest):
                     logger_base_name='limpyd-jobs.worker.%s',
                     logger_level=logging.DEBUG,
                     max_loops=500,
+                    max_duration=3600,
                     terminate_gracefuly=False,
                     save_errors=False,
                     timeout=20,
@@ -91,6 +94,7 @@ class WorkerArgumentsTests(LimpydBaseTest):
         self.assertEqual(worker.logger, logging.getLogger('limpyd-jobs.worker.test'))
         self.assertEqual(worker.logger.level, logging.DEBUG)
         self.assertEqual(worker.max_loops, 500)
+        self.assertEqual(worker.max_duration, timedelta(seconds=3600))
         self.assertEqual(worker.save_errors, False)
         self.assertEqual(worker.terminate_gracefuly, False)
         self.assertEqual(worker.timeout, 20)
@@ -107,6 +111,7 @@ class WorkerArgumentsTests(LimpydBaseTest):
             job_model = WorkerArgumentsTests.TestJob
             error_model = WorkerArgumentsTests.TestError
             max_loops = 500
+            max_duration = 3600
             logger_base_name = 'limpyd-jobs.worker.%s'
             logger_level = logging.DEBUG
             terminate_gracefuly = False
@@ -127,6 +132,7 @@ class WorkerArgumentsTests(LimpydBaseTest):
         self.assertEqual(worker.logger, logging.getLogger('limpyd-jobs.worker.test'))
         self.assertEqual(worker.logger.level, logging.DEBUG)
         self.assertEqual(worker.max_loops, 500)
+        self.assertEqual(worker.max_duration, timedelta(seconds=3600))
         self.assertEqual(worker.save_errors, False)
         self.assertEqual(worker.terminate_gracefuly, False)
         self.assertEqual(worker.timeout, 20)
@@ -152,6 +158,7 @@ class WorkerArgumentsTests(LimpydBaseTest):
             job_model = WorkerArgumentsTests.TestJob
             error_model = WorkerArgumentsTests.TestError
             max_loops = 500
+            max_duration = 3600,
             logger_base_name = 'limpyd-jobs.worker.%s'
             logger_level = logging.DEBUG
             terminate_gracefuly = False
@@ -171,6 +178,7 @@ class WorkerArgumentsTests(LimpydBaseTest):
                     logger_base_name='limpyd-jobs.workerfoo.%s',
                     logger_level=logging.INFO,
                     max_loops=200,
+                    max_duration=1800,
                     terminate_gracefuly=True,
                     save_errors=True,
                     timeout=40,
@@ -188,6 +196,7 @@ class WorkerArgumentsTests(LimpydBaseTest):
         self.assertEqual(worker.logger, logging.getLogger('limpyd-jobs.workerfoo.testfoo'))
         self.assertEqual(worker.logger.level, logging.INFO)
         self.assertEqual(worker.max_loops, 200)
+        self.assertEqual(worker.max_duration, timedelta(seconds=1800))
         self.assertEqual(worker.save_errors, True)
         self.assertEqual(worker.terminate_gracefuly, True)
         self.assertEqual(worker.timeout, 40)
@@ -252,6 +261,10 @@ class WorkerRunTests(LimpydBaseTest):
         worker.end_signal_caught = True
         self.assertEqual(worker.must_stop(), True)
         worker.terminate_gracefuly = False
+        self.assertEqual(worker.must_stop(), False)
+        worker.wanted_end_date = datetime.utcnow() - timedelta(seconds=15)
+        self.assertEqual(worker.must_stop(), True)
+        worker.wanted_end_date = datetime.utcnow() + timedelta(seconds=15)
         self.assertEqual(worker.must_stop(), False)
 
     def test_wait_for_job_should_respond_with_queue_and_job_when_a_queue_is_not_empty(self):
@@ -837,6 +850,20 @@ class WorkerRunTests(LimpydBaseTest):
 
         self.assertEqual(job.foo.hget(), 'bar')
 
+    def test_worker_must_stop_after_max_duration(self):
+        # try without queue
+        worker = Worker(name='test', max_loops=1, timeout=1, max_duration=1, fetch_priorities_delay=1)
+        worker.run()
+        self.assertEqual(worker.status, 'terminated')
+        self.assertTrue(timedelta(seconds=1) < worker.elapsed < timedelta(seconds=2))
+
+        # retry with a queue
+        Queue.get_queue('test', 1)
+        worker = Worker(name='test', max_loops=1, timeout=1, max_duration=1, fetch_priorities_delay=1)
+        worker.run()
+        self.assertEqual(worker.status, 'terminated')
+        self.assertTrue(timedelta(seconds=1) < worker.elapsed < timedelta(seconds=2))
+
 
 class WorkerConfigBaseTests(LimpydBaseTest):
 
@@ -987,6 +1014,16 @@ class WorkerConfigArgumentsTests(WorkerConfigBaseTests):
         with self.assertSystemExit(in_stderr='The max-loops argument'):
             WorkerConfig(self.mkargs('--max-loops=-1'))
 
+    def test_max_duration_argument(self):
+        conf = WorkerConfig(self.mkargs('--max-duration=3600'))
+        self.assertEqual(conf.options.max_duration, 3600)
+
+        with self.assertSystemExit(in_stderr='option --max-duration: invalid integer value:'):
+            WorkerConfig(self.mkargs('--max-duration=foo'))
+
+        with self.assertSystemExit(in_stderr='The max-duration argument'):
+            WorkerConfig(self.mkargs('--max-duration=-1'))
+
     def test_terminate_gracefuly_arguments(self):
         conf = WorkerConfig(self.mkargs())
         self.assertIsNone(conf.options.terminate_gracefuly)
@@ -1112,7 +1149,20 @@ class WorkerConfigRunTests(WorkerConfigBaseTests):
         conf.worker.set_status('waiting')
         self.assertEqual('test-script [waiting] queue=foo loop=0/1000 waiting=0 delayed=0', getproctitle())
 
+        conf.worker.start_date = datetime.utcnow() - timedelta(seconds=10)
+        duration = timedelta(seconds=int(conf.worker.elapsed.total_seconds()))
+        self.assertEqual('test-script [waiting] queue=foo loop=0/1000 '
+                         'waiting=0 delayed=0 duration=%s' % duration,
+                         conf.get_proc_title())
+
+        conf.worker.max_duration = timedelta(seconds=15)
+        duration = timedelta(seconds=int(conf.worker.elapsed.total_seconds()))
+        self.assertEqual('test-script [waiting] queue=foo loop=0/1000 '
+                         'waiting=0 delayed=0 duration=%s/0:00:15' % duration,
+                         conf.get_proc_title())
+
         conf.worker.end_forced = True
+        conf.worker.start_date = None
         self.assertEqual('test-script [waiting - ending] queue=foo loop=0/1000 waiting=0 delayed=0', conf.get_proc_title())
 
     def test_prepare_models(self):

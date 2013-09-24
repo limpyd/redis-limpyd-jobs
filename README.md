@@ -548,7 +548,7 @@ The main behavior is:
 - waiting for a job available in the queue
 - executing the job
 - manage success or error
-- exit after a defined number of jobs
+- exit after a defined number of jobs or a maximum duration (if defined), or when a `SIGINT`/`SIGTERM` signal is caught
 
 The class is split in many short methods so that you can subclass it to change/add/remove whatever you want.
 
@@ -593,6 +593,10 @@ A boolean, default to `True`, to indicate if we have to save the tracebacks of e
 The max number of loops (fetching + executing a job) to do in the worker lifetime, default to 1000. Note that after this number of loop, the worker ends (the `run` method cannot be executed again)
 
 The aim is to avoid memory leaks become too important.
+
+##### `max_duration`
+
+If defined, the worker will end when its `run` method was called for at least this number of seconds. By default it's set to `None`, saying there is no maximum duration.
 
 ##### `terminate_gracefully`
 
@@ -670,6 +674,18 @@ When `True`, ask for the worker to terminate itself after executing the current 
 
 This boolean is set to `True` when a SIGINT/SIGTERM is caught (only if the `terminate_gracefully` is `True`)
 
+##### `start_date`
+
+`None` by default, set to `datetime.utcnow()` when the `run` method starts.
+
+##### `end_date`
+
+`None` by default, set to `datetime.utcnow()` when the `run` method ends.
+
+##### `wanted_end_date`
+
+None by default, it's computed to know when the worker must stop based on the `start_date` and `max_duration`. It will always be `None` if no `max_duration` is defined.
+
 ##### `connection`
 
 It's a property, not an attribute, to get the current connection to the redis server.
@@ -687,10 +703,11 @@ Signature:
     def __init__(self, name=None, callback=None,
                  queue_model=None, job_model=None, error_model=None,
                  logger_base_name=None, logger_level=None, save_errors=None,
-                 save_tracebacks=None, max_loops=None, terminate_gracefuly=None,
-                 timeout=None, fetch_priorities_delay=None,
-                 fetch_delayed_delay=None, requeue_times=None,
-                 requeue_priority_delta=None, requeue_delay_delta=None):
+                 save_tracebacks=None, max_loops=None, max_duration=None,
+                 terminate_gracefuly=None, timeout=None,
+                 fetch_priorities_delay=None, fetch_delayed_delay=None,
+                 requeue_times=None, requeue_priority_delta=None,
+                 requeue_delay_delta=None):
 ```
 Returns nothing.
 
@@ -979,6 +996,12 @@ This method is called to requeue the job when its execution failed, and will cal
 
 It's a property returning a string identifying the current worker, used in logging to distinct log entries for each worker.
 
+##### `elapsed`
+
+It's a property returning, when running the time elapsed since when the `run` started. When the `run` method ends, it's the time between `start_date` and `end_date`.
+
+If the `run` method is not called, it will be set to `None`.
+
 ##### `log`
 
 Signature:
@@ -1083,6 +1106,9 @@ Options:
                         Error model, e.g. --no-save-tracebacks
   --max-loops=MAX_LOOPS
                         Max number of jobs to run, e.g. --max-loops=100
+  --max-duration=MAX_DURATION
+                        Max duration of the worker, in seconds (None by
+                        default), e.g. --max-duration=3600
   --terminate-gracefuly
                         Intercept SIGTERM and SIGINT signals to stop
                         gracefuly, e.g. --terminate-gracefuly
