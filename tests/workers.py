@@ -864,6 +864,18 @@ class WorkerRunTests(LimpydBaseTest):
         self.assertEqual(worker.status, 'terminated')
         self.assertTrue(timedelta(seconds=1) < worker.elapsed < timedelta(seconds=2))
 
+    def test_elapsed_time_should_be_none_if_worker_not_run(self):
+        worker = Worker(name='test', max_loops=1, timeout=1, max_duration=1, fetch_priorities_delay=1)
+        self.assertIsNone(worker.elapsed)
+
+    def test_elapsed_time_should_not_change_when_run_ended(self):
+        Job.add_job(identifier='job:1', queue_name='test')
+        worker = Worker(name='test', max_loops=1, timeout=1, callback=lambda x: None)
+        worker.run()
+        elapsed = worker.elapsed
+        time.sleep(0.1)
+        self.assertEqual(worker.elapsed, elapsed)
+
 
 class WorkerConfigBaseTests(LimpydBaseTest):
 
