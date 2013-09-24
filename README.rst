@@ -39,11 +39,12 @@ Simple example
 
 .. code:: python
 
-        from limpyd_jobs import STATUSES, Job, Worker
+        from limpyd_jobs import STATUSES, Queue, Job, Worker
 
         # The function to run when a job is called by the worker
         def do_stuff(job, queue):
             # here do stuff with your job
+            pass
 
         # Create a first job, name 'job:1', in a queue named 'myqueue', with a
         # priority of 1. The higher the priority, the sooner the job will run
@@ -58,17 +59,18 @@ Simple example
         # "do_stuff" function for each job, and to stop after 2 jobs
         worker = Worker(name='myqueue', callback=do_stuff, max_loops=2)
 
-        # Now really run the job
+        # Now really run the jobs
         worker.run()
 
         # Here our jobs are done, our queue is empty
-        queue = Queue.get_queue('myqueue')
+        queue1 = Queue.get_queue('myqueue', priority=1)
+        queue2 = Queue.get_queue('myqueue', priority=2)
         # nothing waiting
-        print queue.waiting.lmembers()
-        >> []
-        # two jobs in success
-        print queue.success.lmembers()
-        >> ['jobs:job:1', 'jobs:job:2']
+        print queue1.waiting.lmembers(), queue2.waiting.lmembers()
+        >> [] []
+        # two jobs in success (show PKs of jobs)
+        print queue1.success.lmembers(), queue2.success.lmembers()
+        >> ['1', '2']
 
         # Check our jobs statuses
         print job1.status.hget() == STATUSES.SUCCESS
@@ -166,6 +168,7 @@ You can also display the full string of a status:
 .. code:: python
 
         print STATUSES.by_value(my_job.status.hget())
+        >> "SUCCESS"
 
 ``priority``
 ''''''''''''
@@ -1640,15 +1643,15 @@ process name, to have stuff like this:
 
     limpyd-jobs-worker#1566090 [init] queue=foo
     limpyd-jobs-worker#1566090 [starting] queue=foo loop=0/1000 waiting=10 delayed=0
-    limpyd-jobs-worker#1566090 [running] queue=foo loop=1/1000 waiting=9 delayed=2
-    limpyd-jobs-worker#1566090 [terminated] queue=foo loop=10/1000 waiting=0 delayed=0
+    limpyd-jobs-worker#1566090 [running] queue=foo loop=1/1000 waiting=9 delayed=2 duration=0:00:15
+    limpyd-jobs-worker#1566090 [terminated] queue=foo loop=10/1000 waiting=0 delayed=0 duration=0:12:27
 
 You can disable it by passing the ``--no-title`` argument.
 
 Tests
 -----
 
-The ``redis-limpyd-jobs`` package is fully tested (coverage 100%).
+The ``redis-limpyd-jobs`` package is fully tested (coverage: 100%).
 
 To run the tests, which are not installed via the ``setup.py`` file, you
 can do:
@@ -1657,13 +1660,19 @@ can do:
 
     $ python run_tests.py
     [...]
-    Ran 101 tests in 18.278s
+    Ran 119 tests in 22.040s
+
+    OK
 
 Or if you have ``nosetests`` installed:
 
 ::
 
-    nosetests
+    $ nosetests
+    [...]
+    Ran 119 tests in 19.887s
+
+    OK
 
 The ``nosetests`` configuration is provided in the ``setup.cfg`` file
 and include the coverage, if ``nose-cov`` is installed.

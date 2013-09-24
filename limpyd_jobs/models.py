@@ -80,21 +80,21 @@ class Queue(BaseJobsModel):
         """
         Return a list of all queue waiting keys, to use with blpop
         """
-        return [col.waiting.key for col in cls.get_all_by_priority(name)]
+        return [queue.waiting.key for queue in cls.get_all_by_priority(name)]
 
     @classmethod
     def count_waiting_jobs(cls, name):
         """
         Return the number of all jobs waiting in queues with the given name
         """
-        return sum([col.waiting.llen() for col in cls.get_all_by_priority(name)])
+        return sum([queue.waiting.llen() for queue in cls.get_all_by_priority(name)])
 
     @classmethod
     def count_delayed_jobs(cls, name):
         """
         Return the number of all delayed jobs in queues with the given name
         """
-        return sum([col.delayed.zcard() for col in cls.get_all_by_priority(name)])
+        return sum([queue.delayed.zcard() for queue in cls.get_all_by_priority(name)])
 
     @property
     def first_delayed(self):

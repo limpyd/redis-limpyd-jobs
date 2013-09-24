@@ -14,32 +14,22 @@ import threading
 import logging
 
 from limpyd_jobs import STATUSES
-from limpyd_jobs.models import Queue, Job, Error
+from limpyd_jobs.models import BaseJobsModel, Queue, Job
 from limpyd_jobs.workers import Worker, logger
 from limpyd import model, fields
-from limpyd.contrib.database import PipelineDatabase
 
 # start by defining our logger
 logger.addHandler(logging.StreamHandler())
 logger.setLevel(logging.INFO)
 
 # we have to plug our models on a database
-database = PipelineDatabase(host='localhost', port=6379, db=15)
+BaseJobsModel.database.connect(host='localhost', port=6379, db=15)
 
 # we'll use only one queue name
 QUEUE_NAME = 'update_fullname'
 
 
-class ModelConfigMixin(object):
-    """
-    A simple mixin to use with all our models, defining one for all the
-    database and namespace to use.
-    """
-    database = database
-    namespace = 'limpyd-jobs-example'
-
-
-class MyQueue(ModelConfigMixin, Queue):
+class MyQueue(Queue):
     """
     A queue that will store the dates of it's first and last successful job
     """
@@ -48,13 +38,15 @@ class MyQueue(ModelConfigMixin, Queue):
     jobs_counter = fields.InstanceHashField()
 
 
-class MyJob(ModelConfigMixin, Job):
+class MyJob(Job):
     """
     A job that will use Person's PK as identifier, and will store results of
     callback in a new field
     """
     result = fields.StringField()  # to store the result of the task
     queue_model = MyQueue
+    queue_name = QUEUE_NAME
+
     start = fields.InstanceHashField(indexable=True)
 
     def get_object(self):
@@ -63,20 +55,33 @@ class MyJob(ModelConfigMixin, Job):
         """
         return Person.get(self.identifier.hget())
 
+    def run(self, queue):
+        """
+        Create the fullname, and store a a message serving as result in the job
+        """
+        # add some random time to simulate a long job
+        time.sleep(random.random())
 
-class MyError(ModelConfigMixin, Error):
-    """
-    The default Error model, but on our namespace and database
-    """
-    pass
+        # compute the fullname
+        obj = self.get_object()
+        obj.fullname.hset('%s %s' % tuple(obj.hmget('firstname', 'lastname')))
+
+        # this will the "result" of the job
+        result = 'Created fullname for Person %s: %s' % (obj.pk.get(), obj.fullname.hget())
+
+        # save the result of the callback in the job itself
+        self.result.set(result)
+
+        # return the result for future use in the worker
+        return result
 
 
-class Person(ModelConfigMixin, model.RedisModel):
+class Person(model.RedisModel):
     """
     A simple model for which we want to compute fullname based on firstname and
     lastname
     """
-    cacheable = False
+    database = BaseJobsModel.database
 
     firstname = fields.InstanceHashField()
     lastname = fields.InstanceHashField()
@@ -94,51 +99,43 @@ class FullNameWorker(Worker):
     # we use our own models
     queue_model = MyQueue
     job_model = MyJob
-    error_model = MyError
 
     # useful logging level
     logger_level = logging.INFO
 
     # reduce timeout and number of loops
-    max_loops = 5
+    max_loops = 6
     timeout = 5
 
     # workers will be created in threads for this example, and signals only
     # works in main thread
     terminate_gracefuly = False
 
-    # a new attribute to tell the worker to quit after 30 seconds
-    max_total_duration = 5
-    start_date = None
+    # Force stop after at least 5 seconds
+    max_duration = 5
 
-    # keep a list of jobs
-    jobs = []
-
-    def run_started(self):
-        """
-        Save the datetime when the worker starts working, to calculate when we
-        must finish
-        """
+    def __init__(self, *args, **kwargs):
+        # keep a list of jobs, to display at the end of this example script
         self.jobs = []
-        self.start_date = datetime.utcnow()
-        super(FullNameWorker, self).run_started()
-
-    def must_stop(self):
-        """
-        Add a criteria to stop the worker: when the duration in the main loop
-        has reached the number of seconds defined by max_total_duration
-        """
-        _must_stop = super(FullNameWorker, self).must_stop()
-        if not _must_stop:
-            _must_stop = (datetime.utcnow() - self.start_date).total_seconds() > self.max_total_duration
-
-        return _must_stop
+        super(FullNameWorker, self).__init__(*args, **kwargs)
 
     def job_success(self, job, queue, job_result):
         """
         Update the queue's dates and number of jobs managed, and save into the
         job the result received by the callback.
         """
+
+        # display what was done
+        obj = job.get_object()
+        message = '[%s|%s] %s [%s]' % (queue.name.hget(),
+                                       obj.pk.get(),
+                                       job_result,
+                                       threading.current_thread().name)
+        self.log(message)
+
+        # default stuff: update job and queue statuses, and do logging
+        super(FullNameWorker, self).job_success(job, queue, job_result)
+
         # update the queue's dates
         queue_fields_to_update = {
             'last_job_date': str(datetime.utcnow())
@@ -150,33 +147,8 @@ class FullNameWorker(Worker):
         # update the jobs counter on the queue
         queue.jobs_counter.hincrby(1)
 
-        # save a ref to the job
+        # save a ref to the job to display at the end of this example script
         self.jobs.append(int(job.pk.get()))
-
-        # save the result of the callback in the job itself
-        job.result.set(job_result)
-
-        # keep the default stuff at the end
-        super(FullNameWorker, self).job_success(job, queue, job_result)
-
-    def execute(self, job, queue):
-        """
-        Create the fullname, display a message, and return this message, which
-        will then be stored in the job by the job_success method
-        """
-        # add some random time to simulate a long job
-        time.sleep(random.random())
-
-        # compute the fullname
-        obj = job.get_object()
-        obj.fullname.hset('%s %s' % tuple(obj.hmget('firstname', 'lastname')))
-
-        result = 'Created fullname for Person %s: %s' % (obj.pk.get(), obj.fullname.hget())
-
-        message = '[%s] %s [%s]' % (obj.pk.get(), result, threading.current_thread().name)
-
-        self.log(message)
-        return result
 
 
 class WorkerThread(threading.Thread):
@@ -214,7 +186,7 @@ for name in ("Chandler Bing", "Rachel Green", "Ross Geller", "Joey Tribbiani",
 
 # add jobs
 for person_pk in Person.collection():
-    MyJob.add_job(queue_name=QUEUE_NAME, identifier=person_pk, priority=random.randrange(5))
+    MyJob.add_job(identifier=person_pk, priority=random.randrange(5))
 
 
 # create 3 workers, in threads
