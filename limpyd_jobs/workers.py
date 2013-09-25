@@ -56,67 +56,43 @@ class Worker(object):
     # we want to intercept SIGTERM and SIGINT signals, to stop gracefuly
     terminate_gracefuly = True
 
-    def __init__(self, name=None, callback=None,
-                 queue_model=None, job_model=None, error_model=None,
-                 logger_base_name=None, logger_level=None, save_errors=None,
-                 save_tracebacks=None, max_loops=None, max_duration=None,
-                 terminate_gracefuly=None, timeout=None,
-                 fetch_priorities_delay=None, fetch_delayed_delay=None,
-                 requeue_times=None, requeue_priority_delta=None,
-                 requeue_delay_delta=None):
+    # callback to run for each job, will be set to self.execute if None
+    callback = None
+
+    # all parameters that can be passed to the constructor
+    parameters = ('name', 'callback', 'queue_model', 'job_model', 'error_model',
+                  'logger_base_name', 'logger_level', 'save_errors',
+                  'save_tracebacks', 'max_loops', 'max_duration',
+                  'terminate_gracefuly', 'timeout', 'fetch_priorities_delay',
+                  'fetch_delayed_delay', 'requeue_times',
+                  'requeue_priority_delta', 'requeue_delay_delta')
+
+    def __init__(self, name=None, **kwargs):
         """
         Create the worker by saving arguments, doing some checks, preparing
         logger and signals management, and getting queues keys.
         """
         if name is not None:
             self.name = name
-
         if not self.name:
             raise ConfigurationException('The name of the worker is not defined')
 
+        for parameter in self.parameters:
+            if parameter in kwargs:
+                setattr(self, parameter, kwargs[parameter])
+
         # save and check models to use
-        if queue_model is not None:
-            self.queue_model = queue_model
         self._assert_correct_model(self.queue_model, Queue, 'queue')
-        if job_model is not None:
-            self.job_model = job_model
         self._assert_correct_model(self.job_model, Job, 'job')
-        if error_model is not None:
-            self.error_model = error_model
         self._assert_correct_model(self.error_model, Error, 'error')
 
-        # process other arguments
-        self.callback = callback if callback is not None else self.execute
-        if max_loops is not None:
-            self.max_loops = max_loops
-        if max_duration is not None:
-            self.max_duration = max_duration
+        # process other special arguments
+        if not self.callback:
+            self.callback = self.execute
         if self.max_duration:
             self.max_duration = timedelta(seconds=self.max_duration)
-        if terminate_gracefuly is not None:
-            self.terminate_gracefuly = terminate_gracefuly
-        if save_errors is not None:
-            self.save_errors = save_errors
-        if save_tracebacks is not None:
-            self.save_tracebacks = save_tracebacks
-        if timeout is not None:
-            self.timeout = timeout
-        if fetch_priorities_delay is not None:
-            self.fetch_priorities_delay = fetch_priorities_delay
-        if fetch_delayed_delay is not None:
-            self.fetch_delayed_delay = fetch_delayed_delay
-        if requeue_times is not None:
-            self.requeue_times = requeue_times
-        if requeue_priority_delta is not None:
-            self.requeue_priority_delta = requeue_priority_delta
-        if requeue_delay_delta is not None:
-            self.requeue_delay_delta = requeue_delay_delta
 
         # prepare logging
-        if logger_base_name is not None:
-            self.logger_base_name = logger_base_name
-        if logger_level is not None:
-            self.logger_level = logger_level
         self.set_logger()
 
         if self.terminate_gracefuly:
@@ -572,7 +548,7 @@ class WorkerConfig(object):
                   'default to limpyd_jobs.workers.WorkerConfig'),
 
         make_option('--print-options', action='store_true', dest='print_options',
-            help='Print options as parsed by the script, e.g. --print-options'),
+            help='Print options used by the worker, e.g. --print-options'),
         make_option('--dry-run', action='store_true', dest='dry_run',
             help='Won\'t execute any job, just starts the worker and finish it immediatly, e.g. --dry-run'),
 
@@ -649,14 +625,6 @@ class WorkerConfig(object):
         'callback': None,
     }
 
-    worker_options = ('name', 'job_model', 'queue_model', 'error_model',
-                      'callback', 'logger_base_name', 'logger_level',
-                      'save_errors', 'save_tracebacks', 'max_loops',
-                      'max_duration', 'terminate_gracefuly', 'timeout',
-                      'fetch_priorities_delay', 'fetch_delayed_delay',
-                      'requeue_times', 'requeue_priority_delta',
-                      'requeue_delay_delta')
-
     @staticmethod
     def _import_module(module_uri):
         """
@@ -695,8 +663,6 @@ class WorkerConfig(object):
         self.argv = argv or sys.argv[:]
         self.prog_name = os.path.basename(self.argv[0])
         self.manage_options()
-        if self.options.print_options:
-            self.print_options()
         self.update_proc_title()
 
     def get_version(self):
@@ -803,30 +769,28 @@ class WorkerConfig(object):
         """
         options = []
 
-        if self.__class__ != WorkerConfig:
-            options.append(("worker_config", '%s.%s' % (self.__class__.__module__,
-                                                        self.__class__.__name__)))
+        print "The script is running with the following options:"
 
-        if self.database_config:
-            options.append(("database", '%s:%s:%s' % (self.database_config['host'],
-                                                      self.database_config['port'],
-                                                      self.database_config['db'])))
+        options.append(("dry_run", self.options.dry_run))
 
-        if self.options.dry_run:
-            options.append(("dry_run", self.options.dry_run))
+        options.append(("worker_config", self.__class__))
 
-        for option_name in self.worker_options:
-            option = getattr(self.options, option_name)
-            if option is not None:
-                options.append((option_name.replace('_', '-'), option))
-            # special case for worker_class which is not a worker option
-            if option_name == 'error_model' and self.options.worker_class is not None:
-                options.append(("worker-class", self.options.worker_class))
+        database_config = self.database_config or \
+                          self.options.job_model.database.connection_settings
+        options.append(("database", '%s:%s:%s' % (database_config['host'],
+                                                  database_config['port'],
+                                                  database_config['db'])))
 
-        if options:
-            print "The worker will run with the following options:"
-            for name, value in options:
-                print " - %s = %s" % (name, value)
+        if self.options.worker_class is not None:
+            options.append(("worker-class", self.options.worker_class))
+
+        for name, value in options:
+            print " - %s = %s" % (name.replace('_', '-'), value)
+
+        print "The worker will run with the following options:"
+        for name in self.options.worker_class.parameters:
+            option = getattr(self.worker, name)
+            print " - %s = %s" % (name.replace('_', '-'), option)
 
     def execute(self):
         """
@@ -834,6 +798,8 @@ class WorkerConfig(object):
         """
         self.prepare_models()
         self.prepare_worker()
+        if self.options.print_options:
+            self.print_options()
         self.run()
 
     def prepare_models(self):
@@ -850,7 +816,7 @@ class WorkerConfig(object):
         Prepare (and return as a dict) all options to be passed to the worker
         """
         worker_options = dict()
-        for option_name in (self.worker_options):
+        for option_name in (self.options.worker_class.parameters):
             option = getattr(self.options, option_name)
             if option is not None:
                 worker_options[option_name] = option

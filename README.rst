@@ -1024,6 +1024,20 @@ if no ``max_duration`` is defined.
 It's a property, not an attribute, to get the current connection to the
 redis server.
 
+``parameters``
+''''''''''''''
+
+It's a tuple holding all parameters accepted by the worker's constructor
+
+.. code:: python
+
+        parameters = ('name', 'callback', 'queue_model', 'job_model', 'error_model',
+                      'logger_base_name', 'logger_level', 'save_errors',
+                      'save_tracebacks', 'max_loops', 'max_duration',
+                      'terminate_gracefuly', 'timeout', 'fetch_priorities_delay',
+                      'fetch_delayed_delay', 'requeue_times',
+                      'requeue_priority_delta', 'requeue_delay_delta')
+
 Worker's methods
 ^^^^^^^^^^^^^^^^
 
@@ -1037,19 +1051,13 @@ Signature:
 
 .. code:: python
 
-        def __init__(self, name=None, callback=None,
-                     queue_model=None, job_model=None, error_model=None,
-                     logger_base_name=None, logger_level=None, save_errors=None,
-                     save_tracebacks=None, max_loops=None, max_duration=None,
-                     terminate_gracefuly=None, timeout=None,
-                     fetch_priorities_delay=None, fetch_delayed_delay=None,
-                     requeue_times=None, requeue_priority_delta=None,
-                     requeue_delay_delta=None):
+        def __init__(self, name=None, **kwargs):
 
 Returns nothing.
 
 It's the constructor (you guessed it ;) ) of the ``Worker`` class,
-excepting all arguments that can also be defined as class attributes.
+expecting all arguments (defined in ``parameters``) that can also be
+defined as class attributes.
 
 It validates these arguments, prepares the logging and initializes other
 attributes.
@@ -1557,8 +1565,7 @@ Instead of explaining all arguments, see below the result of the
                             The worker config class to use, e.g. --worker-
                             config=my.module.MyWorkerConfig, default to
                             limpyd_jobs.workers.WorkerConfig
-      --print-options       Print options as parsed by the script, e.g. --print-
-                            options
+      --print-options       Print options used by the worker, e.g. --print-options
       --dry-run             Won't execute any job, just starts the worker and
                             finish it immediatly, e.g. --dry-run
       --name=NAME           Name of the Queues to handle e.g. --name=my-queue-name

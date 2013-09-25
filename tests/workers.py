@@ -928,13 +928,14 @@ class WorkerConfigArgumentsTests(WorkerConfigBaseTests):
         class TestWorkerConfig(WorkerConfig):
             pass
 
-        TestWorkerConfig(self.mkargs('--print-options --name=foo --dry-run --database=localhost:6379:15'))
+        conf = TestWorkerConfig(self.mkargs('--print-options --name=foo --dry-run --database=localhost:6379:15'))
+        conf.execute()
         out = self.stdout.getvalue()
-        self.assertTrue(out.startswith('The worker will run with the following options:'))
+        self.assertTrue(out.startswith('The script is running with the following options:'))
         self.assertIn('name = foo', out)
-        self.assertIn('dry_run = True', out)
+        self.assertIn('dry-run = True', out)
         self.assertIn('database = localhost:6379:15', out)
-        self.assertIn('worker_config = tests.workers.TestWorkerConfig', out)
+        self.assertIn("worker-config = <class 'tests.workers.TestWorkerConfig'>", out)
 
     def test_dryrun_argument(self):
         conf = WorkerConfig(self.mkargs('--dry-run'))
