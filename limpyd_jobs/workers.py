@@ -280,6 +280,8 @@ class Worker(object):
         Update the redis keys to listen for new jobs priorities.
         """
         self.keys = self.queue_model.get_waiting_keys(self.name)
+        if not self.keys:
+            self.log('No queues yet with the name %s.' % self.name, level='warning')
         self.last_update_keys = datetime.utcnow()
 
     def count_waiting_jobs(self):
@@ -313,27 +315,26 @@ class Worker(object):
 
         self.set_status('starting')
 
-        must_stop = False
         self.start_date = datetime.utcnow()
         if self.max_duration:
             self.wanted_end_date = self.start_date + self.max_duration
 
-        # get keys or wait for queues available if no ones are yet
-        self.update_keys()
-        self.requeue_delayed_jobs()
-
-        if not self.keys:
-            self.log('No queues yet with the name %s.' % self.name, level='warning')
-            while not self.keys:
-                sleep(self.fetch_priorities_delay)
-                must_stop = self.must_stop()
-                if must_stop:
-                    break
-                self.update_keys()
+        must_stop = self.must_stop()
 
         if not must_stop:
-            self.run_started()
-            self._main_loop()
+
+            # get keys
+            while not self.keys and not must_stop:
+                self.update_keys()
+                if not self.keys:
+                    sleep(self.fetch_priorities_delay)
+                must_stop = self.must_stop()
+
+            if not must_stop:
+                # wait for queues available if no ones are yet
+                self.requeue_delayed_jobs()
+                self.run_started()
+                self._main_loop()
 
         self.set_status('terminated')
         self.end_date = datetime.utcnow()
