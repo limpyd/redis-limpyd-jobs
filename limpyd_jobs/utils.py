@@ -45,3 +45,31 @@ def compute_delayed_until(delayed_for=None, delayed_until=None):
             raise ValueError('Invalid delayed_for argument: must be an int, a float or a timedelta object')
 
     return delayed_until
+
+
+try:
+    from importlib import import_module  # pragma: no cover
+except ImportError:  # pragma: no cover
+    def import_module(module_uri):
+        """
+        Replacement to import_module from importlib for python 2.6
+        """
+        return __import__(module_uri, {}, {}, [''])  # pragma: no cover
+
+
+def import_class(class_uri):
+    """
+    Import a class by string 'from.path.module.class'
+    """
+
+    parts = class_uri.split('.')
+    class_name = parts.pop()
+    module_uri = '.'.join(parts)
+
+    try:
+        module = import_module(module_uri)
+    except ImportError:
+        # maybe we are still in a module, test going up one level
+        module = import_class(module_uri)
+
+    return getattr(module, class_name)

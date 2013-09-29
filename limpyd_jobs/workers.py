@@ -14,6 +14,7 @@ from limpyd.exceptions import DoesNotExist
 
 from limpyd_jobs import STATUSES, LimpydJobsException, ConfigurationException
 from limpyd_jobs.models import Queue, Job, Error
+from limpyd_jobs.utils import import_class
 
 LOGGER_NAME = 'limpyd-jobs'
 logger = logging.getLogger(LOGGER_NAME)
@@ -649,37 +650,6 @@ class WorkerConfig(object):
         'callback': None,
     }
 
-    @staticmethod
-    def _import_module(module_uri):
-        """
-        Replacement to import_module from importlib for python 2.6
-        """
-        return __import__(module_uri, {}, {}, [''])  # pragma: no cover
-
-    @staticmethod
-    def import_class(class_uri):
-        """
-        Import a class by string 'from.path.module.class'
-        To support python 2.6
-        """
-        try:
-            from importlib import import_module  # pragma: no cover
-            callback = import_module  # pragma: no cover
-        except ImportError:  # pragma: no cover
-            callback = WorkerConfig._import_module  # pragma: no cover
-
-        parts = class_uri.split('.')
-        class_name = parts.pop()
-        module_uri = '.'.join(parts)
-
-        try:
-            module = callback(module_uri)
-        except ImportError:
-            # maybe we are still in a module, test going up one level
-            module = WorkerConfig.import_class(module_uri)
-
-        return getattr(module, class_name)
-
     def __init__(self, argv=None):
         """
         Save arguments and program name
@@ -772,7 +742,7 @@ class WorkerConfig(object):
         """
         option = getattr(self.options, name)
         if option:
-            klass = WorkerConfig.import_class(option)
+            klass = import_class(option)
         else:
             klass = self.default_classes[name]
         setattr(self.options, name, klass)
