@@ -50,14 +50,39 @@ class QueueTests(LimpydBaseTest):
         keys = Queue.get_waiting_keys('qux')
         self.assertEqual(keys, [])
 
-    def test_get_all_by_priority_should_return_all_queues_for_a_name(self):
-        q0 = Queue.get_queue(name='test', priority=0)
-        q10 = Queue.get_queue(name='test', priority=10)
-        q5 = Queue.get_queue(name='test', priority=5)
+    def test_get_all_should_return_all_queues(self):
+        qa0 = Queue.get_queue(name='testa', priority=0)
+        qa10 = Queue.get_queue(name='testa', priority=10)
+        qa5 = Queue.get_queue(name='testa', priority=5)
+        qb1 = Queue.get_queue(name='testb', priority=1)
+        qb7 = Queue.get_queue(name='testb', priority=7)
+        qb15 = Queue.get_queue(name='testb', priority=15)
 
-        queues = [q.pk.get() for q in Queue.get_all_by_priority('test')]
+        queuesa = set([q.pk.get() for q in Queue.get_all('testa')])
+        self.assertEqual(queuesa, set([qa0.pk.get(), qa5.pk.get(), qa10.pk.get()]))
+        queuesb = set([q.pk.get() for q in Queue.get_all('testb')])
+        self.assertEqual(queuesb, set([qb1.pk.get(), qb7.pk.get(), qb15.pk.get()]))
 
-        self.assertEqual(queues, [q10.pk.get(), q5.pk.get(), q0.pk.get()])
+        queues = set([q.pk.get() for q in Queue.get_all(['testa', 'testb'])])
+        self.assertEqual(queues, set([qa0.pk.get(), qa5.pk.get(), qa10.pk.get(),
+                                      qb1.pk.get(), qb7.pk.get(), qb15.pk.get()]))
+
+    def test_get_all_by_priority_should_return_all_queues_sorted(self):
+        qa0 = Queue.get_queue(name='testa', priority=0)
+        qa10 = Queue.get_queue(name='testa', priority=10)
+        qa5 = Queue.get_queue(name='testa', priority=5)
+        qb1 = Queue.get_queue(name='testb', priority=1)
+        qb7 = Queue.get_queue(name='testb', priority=7)
+        qb15 = Queue.get_queue(name='testb', priority=15)
+
+        queuesa = [q.pk.get() for q in Queue.get_all_by_priority('testa')]
+        self.assertEqual(queuesa, [qa10.pk.get(), qa5.pk.get(), qa0.pk.get()])
+        queuesb = [q.pk.get() for q in Queue.get_all_by_priority('testb')]
+        self.assertEqual(queuesb, [qb15.pk.get(), qb7.pk.get(), qb1.pk.get()])
+
+        queues = [q.pk.get() for q in Queue.get_all_by_priority(['testa', 'testb'])]
+        self.assertEqual(queues, [qb15.pk.get(), qa10.pk.get(), qb7.pk.get(),
+                                      qa5.pk.get(), qb1.pk.get(), qa0.pk.get()])
 
     def test_extended_queue_can_accept_other_fields(self):
         class ExtendedQueue(Queue):
@@ -81,6 +106,10 @@ class QueueTests(LimpydBaseTest):
         self.assertEqual(Queue.count_waiting_jobs('test'), 1)
         Job.add_job(identifier='job:2', queue_name='test', delayed_for=5)
         self.assertEqual(Queue.count_waiting_jobs('test'), 1)
+        Job.add_job(identifier='foo:1', queue_name='foo')
+        Job.add_job(identifier='bar:1', queue_name='bar')
+        self.assertEqual(Queue.count_waiting_jobs(['foo', 'bar']), 2)
+        self.assertEqual(Queue.count_waiting_jobs(['test', 'foo', 'bar']), 3)
 
     def test_count_delayed_jobs_should_return_the_number_of_delayed_jobs(self):
         self.assertEqual(Queue.count_delayed_jobs('test'), 0)
@@ -88,6 +117,10 @@ class QueueTests(LimpydBaseTest):
         self.assertEqual(Queue.count_delayed_jobs('test'), 1)
         Job.add_job(identifier='job:2', queue_name='test')
         self.assertEqual(Queue.count_delayed_jobs('test'), 1)
+        Job.add_job(identifier='foo:1', queue_name='foo', delayed_for=5)
+        Job.add_job(identifier='bar:1', queue_name='bar', delayed_for=5)
+        self.assertEqual(Queue.count_delayed_jobs(['foo', 'bar']), 2)
+        self.assertEqual(Queue.count_delayed_jobs(['test', 'foo', 'bar']), 3)
 
     def test_first_delayed_should_return_the_first_delayed_job_to_be_ready(self):
         Job.add_job(identifier='job:1', queue_name='test', delayed_for=5)

@@ -15,21 +15,21 @@ from limpyd.exceptions import DoesNotExist
 from limpyd_jobs import STATUSES, LimpydJobsException, ConfigurationException
 from limpyd_jobs.models import Queue, Job, Error
 
-LOGGER_BASE_NAME = 'limpyd-jobs'
-logger = logging.getLogger(LOGGER_BASE_NAME)
+LOGGER_NAME = 'limpyd-jobs'
+logger = logging.getLogger(LOGGER_NAME)
 
 
 class Worker(object):
-    # name of the worker (must be name of Queue objets)
-    name = None
+    # names of queues to use
+    queues = None
 
-    # models to use
+    # models to use (for all queues/jobs/errors !)
     queue_model = Queue
     job_model = Job
     error_model = Error
 
     # logging information
-    logger_base_name = LOGGER_BASE_NAME + '.%s'  # will use self.name
+    logger_name = LOGGER_NAME
     logger_level = logging.ERROR
     save_errors = True
     save_tracebacks = True
@@ -60,22 +60,44 @@ class Worker(object):
     callback = None
 
     # all parameters that can be passed to the constructor
-    parameters = ('name', 'callback', 'queue_model', 'job_model', 'error_model',
-                  'logger_base_name', 'logger_level', 'save_errors',
+    parameters = ('queues', 'callback', 'queue_model', 'job_model', 'error_model',
+                  'logger_name', 'logger_level', 'save_errors',
                   'save_tracebacks', 'max_loops', 'max_duration',
                   'terminate_gracefuly', 'timeout', 'fetch_priorities_delay',
                   'fetch_delayed_delay', 'requeue_times',
                   'requeue_priority_delta', 'requeue_delay_delta')
 
-    def __init__(self, name=None, **kwargs):
+    @staticmethod
+    def _parse_queues(queues):
+        """
+        Parse the given parameter and return a list of queues.
+        The parameter must be a list/tuple of strings, or a string with queues
+        separated by a comma.
+        """
+        if not queues:
+            raise ConfigurationException('The queue(s) to use are not defined')
+
+        if isinstance(queues, (list, tuple)):
+            for queue_name in queues:
+                if not isinstance(queue_name, basestring):
+                    raise ConfigurationException('Queue name "%s" is not a (base)string')
+
+        elif isinstance(queues, basestring):
+            queues = queues.split(',')
+
+        else:
+            raise ConfigurationException('Invalid format for queues names')
+
+        return list(queues)
+
+    def __init__(self, queues=None, **kwargs):
         """
         Create the worker by saving arguments, doing some checks, preparing
         logger and signals management, and getting queues keys.
         """
-        if name is not None:
-            self.name = name
-        if not self.name:
-            raise ConfigurationException('The name of the worker is not defined')
+        if queues is not None:
+            self.queues = queues
+        self.queues = self._parse_queues(self.queues)
 
         for parameter in self.parameters:
             if parameter in kwargs:
@@ -144,9 +166,9 @@ class Worker(object):
 
     def set_logger(self):
         """
-        Prepare the logger, based on self.logger_base_name and self.logger_level
+        Prepare the logger, using self.logger_name and self.logger_level
         """
-        self.logger = logging.getLogger(self.logger_base_name % self.name)
+        self.logger = logging.getLogger(self.logger_name)
         self.logger.setLevel(self.logger_level)
 
     @property
@@ -255,22 +277,23 @@ class Worker(object):
         """
         Update the redis keys to listen for new jobs priorities.
         """
-        self.keys = self.queue_model.get_waiting_keys(self.name)
+        self.keys = self.queue_model.get_waiting_keys(self.queues)
+
         if not self.keys:
-            self.log('No queues yet with the name %s.' % self.name, level='warning')
+            self.log('No queues yet', level='warning')
         self.last_update_keys = datetime.utcnow()
 
     def count_waiting_jobs(self):
         """
         Return the number of all jobs waiting in queues managed by the worker
         """
-        return self.queue_model.count_waiting_jobs(self.name)
+        return self.queue_model.count_waiting_jobs(self.queues)
 
     def count_delayed_jobs(self):
         """
         Return the number of all delayed jobs in queues managed by the worker
         """
-        return self.queue_model.count_delayed_jobs(self.name)
+        return self.queue_model.count_delayed_jobs(self.queues)
 
     def run_started(self):
         """
@@ -332,8 +355,9 @@ class Worker(object):
         """
         Requeue each delayed job that are now ready to be executed
         """
-        for queue in self.queue_model.get_all_by_priority(self.name):
+        for queue in self.queue_model.get_all_by_priority(self.queues):
             queue.requeue_delayed_jobs(job_model=self.job_model)
+
         self.last_requeue_delayed = datetime.utcnow()
 
     def _main_loop(self):
@@ -552,15 +576,15 @@ class WorkerConfig(object):
         make_option('--dry-run', action='store_true', dest='dry_run',
             help='Won\'t execute any job, just starts the worker and finish it immediatly, e.g. --dry-run'),
 
-        make_option('--name', action='store', dest='name',
-            help='Name of the Queues to handle e.g. --name=my-queue-name'),
+        make_option('--queues', action='store', dest='queues',
+            help='Name of the Queues to handle, comma separated e.g. --queues=queue1,queue2'),
 
         make_option('--job-model', action='store', dest='job_model',
-            help='Name of the Job model to use, e.g. --job-model=my.module.JobModel'),
+            help='Name of the Job model to use (for all jobs !), e.g. --job-model=my.module.JobModel'),
         make_option('--queue-model', action='store', dest='queue_model',
-            help='Name of the Queue model to use, e.g. --queue-model=my.module.QueueModel'),
+            help='Name of the Queue model to use (for all queues !), e.g. --queue-model=my.module.QueueModel'),
         make_option('--error-model', action='store', dest='error_model',
-            help='Name of the Error model to use, e.g. --queue-model=my.module.ErrorModel'),
+            help='Name of the Error model to use (for all errors !), e.g. --queue-model=my.module.ErrorModel'),
 
         make_option('--worker-class', action='store', dest='worker_class',
             help='Name of the Worker class to use, e.g. --worker-class=my.module.WorkerClass'),
@@ -568,8 +592,8 @@ class WorkerConfig(object):
         make_option('--callback', action='store', dest='callback',
             help='The callback to call for each job, e.g. --worker-class=my.module.callback'),
 
-        make_option('--logger-base-name', action='store', dest='logger_base_name',
-            help='The base name to use for logging, e.g. --logger-base-name="limpyd-jobs.%s"'),
+        make_option('--logger-name', action='store', dest='logger_name',
+            help='The base name to use for logging, e.g. --logger-name="limpyd-jobs.my-job"'),
         make_option('--logger-level', action='store', dest='logger_level',
             help='The level to use for logging, e.g. --worker-class=INFO'),
 
@@ -715,7 +739,7 @@ class WorkerConfig(object):
                     self.parser.error('Invalid logger-level %s' % self.options.logger_level)
 
         if self.options.max_loops is not None and self.options.max_loops < 0:
-            self.parser.error('The max-loops argument (%s) must be a positive integer' % self.options.max_loops)
+            self.parser.error('The max-loops argument (%s) must be a <positive></positive> integer' % self.options.max_loops)
 
         if self.options.max_duration is not None and self.options.max_duration < 0:
             self.parser.error('The max-duration argument (%s) must be a positive integer' % self.options.max_duration)
@@ -790,6 +814,8 @@ class WorkerConfig(object):
         print "The worker will run with the following options:"
         for name in self.options.worker_class.parameters:
             option = getattr(self.worker, name)
+            if isinstance(option, (list, tuple, set)):
+                option = ','.join(option)
             print " - %s = %s" % (name.replace('_', '-'), option)
 
     def execute(self):
@@ -862,8 +888,8 @@ class WorkerConfig(object):
                 status += ' - ending'
         title_parts.append('[%s]' % status)
 
-        if has_worker and self.worker.name:
-            title_parts.append('queue=%s' % self.worker.name)
+        if has_worker and self.worker.queues:
+            title_parts.append('queues=%s' % ','.join(self.worker.queues))
 
         if has_worker and self.worker.status:
             # add infos about the main loop

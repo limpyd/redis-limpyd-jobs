@@ -67,34 +67,64 @@ class Queue(BaseJobsModel):
         push_method = getattr(self.waiting, 'lpush' if prepend else 'rpush')
         push_method(job_pk)
 
-    @classmethod
-    def get_all_by_priority(cls, name):
+    @staticmethod
+    def _get_iterable_for_names(names):
         """
-        Return all the queues with the given name, sorted by priorities (higher
-        priority first)
+        Ensure that we have an iterable list of names, even if we have a single
+        name
         """
-        return cls.collection(name=name).sort(by='-priority').instances()
+        if isinstance(names, basestring):
+            names = (names, )
+        return names
 
     @classmethod
-    def get_waiting_keys(cls, name):
+    def get_all(cls, names):
+        """
+        Return all queues for the given names (for all available priorities)
+        """
+        names = cls._get_iterable_for_names(names)
+
+        queues = []
+        for queue_name in names:
+            queues.extend(cls.collection(name=queue_name).instances())
+
+        return queues
+
+    @classmethod
+    def get_all_by_priority(cls, names):
+        """
+        Return all the queues with the given names, sorted by priorities (higher
+        priority first), then by name
+        """
+        names = cls._get_iterable_for_names(names)
+
+        queues = cls.get_all(names)
+
+        # sort all queues by priority
+        queues.sort(key=lambda q: int(q.priority.hget() or 0), reverse=True)
+
+        return queues
+
+    @classmethod
+    def get_waiting_keys(cls, names):
         """
         Return a list of all queue waiting keys, to use with blpop
         """
-        return [queue.waiting.key for queue in cls.get_all_by_priority(name)]
+        return [queue.waiting.key for queue in cls.get_all_by_priority(names)]
 
     @classmethod
-    def count_waiting_jobs(cls, name):
+    def count_waiting_jobs(cls, names):
         """
-        Return the number of all jobs waiting in queues with the given name
+        Return the number of all jobs waiting in queues with the given names
         """
-        return sum([queue.waiting.llen() for queue in cls.get_all_by_priority(name)])
+        return sum([queue.waiting.llen() for queue in cls.get_all(names)])
 
     @classmethod
-    def count_delayed_jobs(cls, name):
+    def count_delayed_jobs(cls, names):
         """
-        Return the number of all delayed jobs in queues with the given name
+        Return the number of all delayed jobs in queues with the given names
         """
-        return sum([queue.delayed.zcard() for queue in cls.get_all_by_priority(name)])
+        return sum([queue.delayed.zcard() for queue in cls.get_all(names)])
 
     @property
     def first_delayed(self):

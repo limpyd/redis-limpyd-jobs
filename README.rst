@@ -616,40 +616,60 @@ existing queue is found)
 ''''''''''''''''''''
 
 The ``get_waiting_keys`` class method returns all the existing (waiting)
-queues with a given name, sorted by priority (reverse order: the highest
-priorities come first). The returned value is a list of redis keys for
-each ``waiting`` lists of matching queues. It's used internally by the
-workers as argument to the ``blpop`` redis command.
+queues with the given names, sorted by priority (reverse order: the
+highest priorities come first), then names. The returned value is a list
+of redis keys for each ``waiting`` lists of matching queues. It's used
+internally by the workers as argument to the ``blpop`` redis command.
+
+Arguments:
+
+-  ``names`` The names of the queues to take into accounts (can be a
+   string if a single name, or a list of strings)
 
 ``count_waiting_jobs``
 ''''''''''''''''''''''
 
 The ``count_waiting_jobs`` class method returns the number of jobs still
-waiting for a given queue name, combining all priorities.
+waiting for the given queue names, combining all priorities.
 
 Arguments:
 
--  ``name`` The name of the queues to take into accounts.
+-  ``names`` The names of the queues to take into accounts (can be a
+   string if a single name, or a list of strings)
 
 ``count_delayed_jobs``
 ''''''''''''''''''''''
 
 The ``count_delayed_jobs`` class method returns the number of jobs still
-delayed for a given queue name, combining all priorities.
+delayed for the given queue names, combining all priorities.
 
 Arguments:
 
--  ``name`` The name of the queues to take into accounts.
+-  ``names`` The names of the queues to take into accounts (can be a
+   string if a single name, or a list of strings)
+
+``get_all``
+'''''''''''
+
+The ``get_all`` class method returns a list of queues for the given
+names.
+
+Arguments:
+
+-  ``name`` The names of the queues to take into accounts (can be a
+   string if a single name, or a list of strings)
 
 ``get_all_by_priority``
 '''''''''''''''''''''''
 
-The ``get_all_by_priority`` returns a list of queues for the given name,
-ordered by priorities (the highest priority first)
+The ``get_all_by_priority`` class method returns a list of queues for
+the given names, ordered by priorities (the highest priority first),
+then names.
 
 Arguments:
 
--  ``name`` The name of the queues to take into accounts.
+-  ``name`` The names of the queues to take into accounts (can be a
+   string if a single name, or a list of strings)
 
 Error
 ~~~~~
@@ -775,9 +795,9 @@ The Worker class
 The ``Worker`` class does all the logic, working with ``Queue`` and
 ``Job`` models.
 
-The main behavior is: - reading queue keys for the given name - waiting
-for a job available in the queue - executing the job - manage success or
-error - exit after a defined number of jobs or a maximum duration (if
+The main behavior is: - reading queue keys for the given names - waiting
+for a job available in the queues - executing the job - manage success
+or error - exit after a defined number of jobs or a maximum duration (if
 defined), or when a ``SIGINT``/``SIGTERM`` signal is caught
 
 The class is split in many short methods so that you can subclass it to
@@ -790,12 +810,18 @@ Each of the following worker's attributes can be set by an argument in
 the constructor, using the exact same name. It's why the two are
 described here together.
 
-``name``
-''''''''
+``queues``
+''''''''''
 
-The name of the worker, used to get all queues with that name. Default
-to ``None``, but if not set and not defined in a subclass, will raise an
-``LimpydJobsException``.
+Name of the queues to work with. It can be a list/tuple of strings, or a
+string with names separated by a comma (no spaces), or without comma for
+a single queue.
+
+Note that all queues must be from the same ``queue_model``, and all jobs
+from the same ``job_model``.
+
+Default to ``None``, but if not set and not defined in a subclass, will
+raise an ``LimpydJobsException``.
 
 ``job_model``
 '''''''''''''
@@ -818,20 +844,19 @@ The model to use for saving errors. By default it's the ``Error`` model
 included in ``limpyd_jobs``, but you can use a subclass of the default
 model to add fields, methods...
 
-``logger_base_name``
-''''''''''''''''''''
+``logger_name``
+'''''''''''''''
 
 ``limpyd_jobs`` uses the python ``logging`` module, so this is the name
 to use for the logger created for the worker. The default value is
-``LOGGER_BASE_NAME + '.%s'``, with ``LOGGER_BASE_NAME`` defined in
-``limpyd_jobs.workers`` with a value of "limpyd\_jobs", and '%s' will be
-replaced by the ``name`` attribute.
+``LOGGER_NAME``, with ``LOGGER_NAME`` defined in ``limpyd_jobs.workers``
+with a value of "limpyd-jobs".
 
 ``logger_level``
 ''''''''''''''''
 
 It's the level set for the logger created with the name defined in
-``logger_base_name``.
+``logger_name``.
 
 ``save_errors``
 '''''''''''''''
@@ -876,9 +901,13 @@ when the current jog is done.
 ''''''''''''
 
 The callback is the function to run when a job is fetched. By default
-it's the ``execute`` method of the worker (which, if not overridden,
-raises a ``NotImplemented`` error) , but you can pass any function that
-accept a job and a queue as argument.
+it's the ``execute`` method of the worker (which calls the ``run``
+method of jobs, which, if not overridden, raises a ``NotImplemented``
+error) , but you can pass any function that accept a job and a queue as
+argument.
+
+Using the queue's name, and the job's identifier, you can manage many
+actions depending on the queue if needed.
 
 If this callback (or the ``execute`` method) raises an exception, the
 job is considered in error. In the other case, it's considered
@@ -1031,8 +1060,8 @@ It's a tuple holding all parameters accepted by the worker's constructor
 
 .. code:: python
 
-        parameters = ('name', 'callback', 'queue_model', 'job_model', 'error_model',
-                      'logger_base_name', 'logger_level', 'save_errors',
+        parameters = ('queues', 'callback', 'queue_model', 'job_model', 'error_model',
+                      'logger_name', 'logger_level', 'save_errors',
                       'save_tracebacks', 'max_loops', 'max_duration',
                       'terminate_gracefuly', 'timeout', 'fetch_priorities_delay',
                       'fetch_delayed_delay', 'requeue_times',
@@ -1051,7 +1080,7 @@ Signature:
 
 .. code:: python
 
-        def __init__(self, name=None, **kwargs):
+        def __init__(self, queues=None, **kwargs):
 
 Returns nothing.
 
@@ -1112,7 +1141,7 @@ Signature:
 Returns nothing.
 
 It's called in the constructor to initialize the logger, using
-``logger_base_name`` and ``logger_level``, saving it in ``self.logger``.
+``logger_name`` and ``logger_level``, saving it in ``self.logger``.
 
 ``must_stop``
 '''''''''''''
@@ -1583,7 +1612,7 @@ Instead of explaining all arguments, see below the result of the
                             class=my.module.WorkerClass
       --callback=CALLBACK   The callback to call for each job, e.g. --worker-
                             class=my.module.callback
-      --logger-base-name=LOGGER_BASE_NAME
+      --logger-name=LOGGER_NAME
                             The base name to use for logging, e.g. --logger-base-
                             name="limpyd-jobs.%s"
       --logger-level=LOGGER_LEVEL
