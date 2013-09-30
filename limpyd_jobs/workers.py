@@ -24,9 +24,8 @@ class Worker(object):
     # names of queues to use
     queues = None
 
-    # models to use (for all queues/jobs/errors !)
+    # models to use (for all queues/errors !)
     queue_model = Queue
-    job_model = Job
     error_model = Error
 
     # logging information
@@ -61,7 +60,7 @@ class Worker(object):
     callback = None
 
     # all parameters that can be passed to the constructor
-    parameters = ('queues', 'callback', 'queue_model', 'job_model', 'error_model',
+    parameters = ('queues', 'callback', 'queue_model', 'error_model',
                   'logger_name', 'logger_level', 'save_errors',
                   'save_tracebacks', 'max_loops', 'max_duration',
                   'terminate_gracefuly', 'timeout', 'fetch_priorities_delay',
@@ -106,7 +105,6 @@ class Worker(object):
 
         # save and check models to use
         self._assert_correct_model(self.queue_model, Queue, 'queue')
-        self._assert_correct_model(self.job_model, Job, 'job')
         self._assert_correct_model(self.error_model, Error, 'error')
 
         # process other special arguments
@@ -223,15 +221,15 @@ class Worker(object):
         blpop_result = self.connection.blpop(self.keys, self.timeout)
         if blpop_result is None:
             return None
-        queue_redis_key, job_pk = blpop_result
+        queue_redis_key, job_ident = blpop_result
         self.set_status('running')
-        return self.get_queue(queue_redis_key), self.get_job(job_pk)
+        return self.get_queue(queue_redis_key), self.get_job(job_ident)
 
-    def get_job(self, job_pk):
+    def get_job(self, job_ident):
         """
-        Return a job based on its primary key.
+        Return a job based on its representation (class + pk).
         """
-        return self.job_model.get(job_pk)
+        return Job.get_from_ident(job_ident)
 
     def get_queue(self, queue_redis_key):
         """
@@ -357,7 +355,7 @@ class Worker(object):
         Requeue each delayed job that are now ready to be executed
         """
         for queue in self.queue_model.get_all_by_priority(self.queues):
-            queue.requeue_delayed_jobs(job_model=self.job_model)
+            queue.requeue_delayed_jobs()
 
         self.last_requeue_delayed = datetime.utcnow()
 
@@ -416,7 +414,7 @@ class Worker(object):
                     self.log('[%s] unexpected error: %s' % (identifier, str(e)),
                                                                  level='error')
                     try:
-                        queue.errors.rpush(job.pk.get())
+                        queue.errors.rpush(job.ident)
                     except Exception, e:
                         self.log('[%s] unable to add the error in the queue: %s'
                          % (identifier, str(e)), level='error')
@@ -439,7 +437,7 @@ class Worker(object):
         Called when an exception was raised during the execute call for a job.
         """
         job.hmset(end=str(datetime.utcnow()), status=STATUSES.ERROR)
-        queue.errors.rpush(job.pk.get())
+        queue.errors.rpush(job.ident)
 
         if self.save_errors:
             additional_fields = self.additional_error_fields(job, queue, exception)
@@ -505,7 +503,7 @@ class Worker(object):
         job_result is the value returned by the callback, if any.
         """
         job.hmset(end=str(datetime.utcnow()), status=STATUSES.SUCCESS)
-        queue.success.rpush(job.pk.get())
+        queue.success.rpush(job.ident)
         self.log(self.job_success_message(job, queue, job_result))
         if hasattr(job, 'on_success'):
             job.on_success(queue, job_result)
@@ -580,8 +578,6 @@ class WorkerConfig(object):
         make_option('--queues', action='store', dest='queues',
             help='Name of the Queues to handle, comma separated e.g. --queues=queue1,queue2'),
 
-        make_option('--job-model', action='store', dest='job_model',
-            help='Name of the Job model to use (for all jobs !), e.g. --job-model=my.module.JobModel'),
         make_option('--queue-model', action='store', dest='queue_model',
             help='Name of the Queue model to use (for all queues !), e.g. --queue-model=my.module.QueueModel'),
         make_option('--error-model', action='store', dest='error_model',
@@ -643,7 +639,6 @@ class WorkerConfig(object):
     )
 
     default_classes = {
-        'job_model': Job,
         'queue_model': Queue,
         'error_model': Error,
         'worker_class': Worker,
@@ -770,7 +765,7 @@ class WorkerConfig(object):
         options.append(("worker_config", self.__class__))
 
         database_config = self.database_config or \
-                          self.options.job_model.database.connection_settings
+                          self.options.queue_model.database.connection_settings
         options.append(("database", '%s:%s:%s' % (database_config['host'],
                                                   database_config['port'],
                                                   database_config['db'])))
@@ -803,8 +798,7 @@ class WorkerConfig(object):
         If a database config ws given as argument, apply it to our models
         """
         if self.database_config:
-            for model in (self.options.job_model, self.options.queue_model,
-                                                    self.options.error_model):
+            for model in (self.options.queue_model, self.options.error_model):
                 model.database.reset(**self.database_config)
 
     def prepare_worker_options(self):

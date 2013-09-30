@@ -27,9 +27,6 @@ class WorkerArgumentsTests(LimpydBaseTest):
     class TestQueue(Queue):
         namespace = 'WorkerArgumentsTests'
 
-    class TestJob(Job):
-        namespace = 'WorkerArgumentsTests'
-
     class TestError(Error):
         namespace = 'WorkerArgumentsTests'
 
@@ -51,7 +48,6 @@ class WorkerArgumentsTests(LimpydBaseTest):
 
         self.assertEqual(worker.queues, ['test'])
         self.assertEqual(worker.queue_model, Queue)
-        self.assertEqual(worker.job_model, Job)
         self.assertEqual(worker.error_model, Error)
         self.assertEqual(worker.callback, worker.execute)
         self.assertEqual(worker.logger, logging.getLogger('limpyd-jobs'))
@@ -74,7 +70,6 @@ class WorkerArgumentsTests(LimpydBaseTest):
         worker = Worker(
                     queues='test',
                     queue_model=WorkerArgumentsTests.TestQueue,
-                    job_model=WorkerArgumentsTests.TestJob,
                     error_model=WorkerArgumentsTests.TestError,
                     callback=callback,
                     logger_name='limpyd-jobs.worker.test',
@@ -93,7 +88,6 @@ class WorkerArgumentsTests(LimpydBaseTest):
 
         self.assertEqual(worker.queues, ['test'])
         self.assertEqual(worker.queue_model, WorkerArgumentsTests.TestQueue)
-        self.assertEqual(worker.job_model, WorkerArgumentsTests.TestJob)
         self.assertEqual(worker.error_model, WorkerArgumentsTests.TestError)
         self.assertEqual(worker.callback, callback)
         self.assertEqual(worker.logger, logging.getLogger('limpyd-jobs.worker.test'))
@@ -113,7 +107,6 @@ class WorkerArgumentsTests(LimpydBaseTest):
         class TestWorker(Worker):
             queues = 'test'
             queue_model = WorkerArgumentsTests.TestQueue
-            job_model = WorkerArgumentsTests.TestJob
             error_model = WorkerArgumentsTests.TestError
             max_loops = 500
             max_duration = 3600
@@ -132,7 +125,6 @@ class WorkerArgumentsTests(LimpydBaseTest):
 
         self.assertEqual(worker.queues, ['test'])
         self.assertEqual(worker.queue_model, WorkerArgumentsTests.TestQueue)
-        self.assertEqual(worker.job_model, WorkerArgumentsTests.TestJob)
         self.assertEqual(worker.error_model, WorkerArgumentsTests.TestError)
         self.assertEqual(worker.logger, logging.getLogger('limpyd-jobs.worker.test'))
         self.assertEqual(worker.logger.level, logging.DEBUG)
@@ -151,16 +143,12 @@ class WorkerArgumentsTests(LimpydBaseTest):
         class OtherTestQueue(Queue):
             namespace = 'test_worker_subclass_attribute_should_be_overriden_by_arguments'
 
-        class OtherTestJob(Job):
-            namespace = 'test_worker_subclass_attribute_should_be_overriden_by_arguments'
-
         class OtherTestError(Error):
             namespace = 'test_worker_subclass_attribute_should_be_overriden_by_arguments'
 
         class TestWorker(Worker):
             queues = 'test'
             queue_model = WorkerArgumentsTests.TestQueue
-            job_model = WorkerArgumentsTests.TestJob
             error_model = WorkerArgumentsTests.TestError
             max_loops = 500
             max_duration = 3600,
@@ -178,7 +166,6 @@ class WorkerArgumentsTests(LimpydBaseTest):
         worker = Worker(
                     queues='testfoo',
                     queue_model=OtherTestQueue,
-                    job_model=OtherTestJob,
                     error_model=OtherTestError,
                     logger_name='limpyd-jobs.workerfoo.testfoo',
                     logger_level=logging.INFO,
@@ -196,7 +183,6 @@ class WorkerArgumentsTests(LimpydBaseTest):
 
         self.assertEqual(worker.queues, ['testfoo'])
         self.assertEqual(worker.queue_model, OtherTestQueue)
-        self.assertEqual(worker.job_model, OtherTestJob)
         self.assertEqual(worker.error_model, OtherTestError)
         self.assertEqual(worker.logger, logging.getLogger('limpyd-jobs.workerfoo.testfoo'))
         self.assertEqual(worker.logger.level, logging.INFO)
@@ -217,8 +203,6 @@ class WorkerArgumentsTests(LimpydBaseTest):
 
         with self.assertRaises(ConfigurationException):
             Worker('test', queue_model=FooBar)
-        with self.assertRaises(ConfigurationException):
-            Worker('test', job_model=FooBar)
         with self.assertRaises(ConfigurationException):
             Worker('test', error_model=FooBar)
 
@@ -249,6 +233,49 @@ class WorkerArgumentsTests(LimpydBaseTest):
             Worker(queues=123)
         with self.assertRaises(ConfigurationException):
             Worker(queues=[1, 2])
+
+
+class TestJobOnSuccess(Job):
+    foo = fields.InstanceHashField()
+
+    def on_success(self, queue, result):
+        self.foo.hset(result)
+
+    def run(self, queue):
+        return 'bar'
+
+
+class TestJobOnSarted(Job):
+    foo = fields.InstanceHashField()
+
+    def on_started(self, queue):
+        self.foo.hset('bar')
+
+    def run(self, queue):
+        pass
+
+
+class TestJobOnError(Job):
+    # run method not overriden, will fail
+    foo = fields.InstanceHashField()
+
+    def on_error(self, queue, exception, trace):
+        self.foo.hset('bar')
+
+
+class TestJobOnSkipped(Job):
+    foo = fields.InstanceHashField()
+
+    def on_skipped(self, queue):
+        self.foo.hset('bar')
+
+
+class TestJobOnRequeued(Job):
+    # run method not overriden, will fail
+    foo = fields.InstanceHashField()
+
+    def on_requeued(self, queue):
+        self.foo.hset('bar')
 
 
 class WorkerRunTests(LimpydBaseTest):
@@ -347,24 +374,30 @@ class WorkerRunTests(LimpydBaseTest):
         # info should be received
         self.assertEqual(worker.test_content[0].pk.get(), queue.pk.get())
         self.assertTrue(isinstance(worker.test_content[0], Queue))
-        self.assertEqual(worker.test_content[1].pk.get(), job.pk.get())
+        self.assertEqual(worker.test_content[1].ident, job.ident)
         self.assertTrue(isinstance(worker.test_content[1], Job))
 
         # job must no be in the queue anymore
-        self.assertNotIn(job.pk.get(), queue.waiting.lmembers())
+        self.assertNotIn(job.ident, queue.waiting.lmembers())
 
-    def test_get_job_method_should_return_a_job_based_on_its_pk(self):
+    def test_get_job_method_should_return_a_job_based_on_its_repr(self):
         worker = Worker('test')
         job = Job.add_job(queue_name='test', identifier='job:1')
 
         # a job...
-        test_job = worker.get_job(job.pk.get())
+        test_job = worker.get_job(job.ident)
         self.assertTrue(isinstance(test_job, Job))
-        self.assertEqual(test_job.pk.get(), job.pk.get())
+        self.assertEqual(test_job.ident, job.ident)
 
         # not a job...
         with self.assertRaises(DoesNotExist):
+            worker.get_job('%s:foo' % Job.get_model_repr())
+        with self.assertRaises(ValueError):
             worker.get_job('foo')
+        with self.assertRaises(ValueError):
+            worker.get_job('foo:bar')
+        with self.assertRaises(AttributeError):
+            worker.get_job('limpyd_jobs.models.Jobbbb:bar')
 
     def test_get_queue_method_should_return_a_queue_based_on_its_waiting_field_key(self):
         worker = Worker('test')
@@ -406,7 +439,7 @@ class WorkerRunTests(LimpydBaseTest):
 
         def callback(job, queue):
             result[job.identifier.hget()] = {
-                'job_pk': job.pk.get(),
+                'job_ident': job.ident,
                 'queue_pk': queue.pk.get(),
                 'queue_name': queue.name.hget(),
             }
@@ -420,12 +453,12 @@ class WorkerRunTests(LimpydBaseTest):
 
         self.assertEqual(result, {
             'job:1': {
-                'job_pk': job1.pk.get(),
+                'job_ident': job1.ident,
                 'queue_pk': queue1.pk.get(),
                 'queue_name': 'foo',
             },
             'job:2': {
-                'job_pk': job2.pk.get(),
+                'job_ident': job2.ident,
                 'queue_pk': queue2.pk.get(),
                 'queue_name': 'bar',
             },
@@ -448,7 +481,7 @@ class WorkerRunTests(LimpydBaseTest):
         worker.run()
 
         self.assertEqual(job.status.hget(), STATUSES.SUCCESS)
-        self.assertIn(job.pk.get(), queue.success.lmembers())
+        self.assertIn(job.ident, queue.success.lmembers())
         self.assertEqual(worker.passed, 42)
 
     def test_job_error_method_should_be_called(self):
@@ -468,7 +501,7 @@ class WorkerRunTests(LimpydBaseTest):
         worker.run()
 
         self.assertEqual(job1.status.hget(), STATUSES.ERROR)
-        self.assertIn(job1.pk.get(), queue.errors.lmembers())
+        self.assertIn(job1.ident, queue.errors.lmembers())
         self.assertEqual(len(Error.collection()), 1)
         error = Error.get(identifier='job:1')
         self.assertEqual(error.message.hget(), 'You must implement your own action')
@@ -481,7 +514,7 @@ class WorkerRunTests(LimpydBaseTest):
         worker.run()
 
         self.assertEqual(job2.status.hget(), STATUSES.ERROR)
-        self.assertIn(job2.pk.get(), queue.errors.lmembers())
+        self.assertIn(job2.ident, queue.errors.lmembers())
         self.assertEqual(len(Error.collection()), 2)
         error = Error.get(identifier='job:2')
         self.assertEqual(error.message.hget(), 'foobar')
@@ -508,7 +541,7 @@ class WorkerRunTests(LimpydBaseTest):
             def additional_error_fields(self, job, queue, exception, trace=None):
                 return {
                     'foo': 'Error on queue %s for job %s' % (
-                        job.pk.get(), queue.pk.get()
+                        queue.pk.get(), job.ident
                     )
                 }
 
@@ -518,7 +551,7 @@ class WorkerRunTests(LimpydBaseTest):
         worker.run()
 
         error = TestError.get(identifier='job:1')
-        attended_foo = 'Error on queue %s for job %s' % (job.pk.get(), queue.pk.get())
+        attended_foo = 'Error on queue %s for job %s' % (queue.pk.get(), job.ident)
         self.assertEqual(error.foo.hget(), attended_foo)
 
     def test_job_in_error_could_be_requeue(self):
@@ -847,75 +880,42 @@ class WorkerRunTests(LimpydBaseTest):
         self.assertEqual(queue.errors.llen(), 0)
 
     def test_job_on_success_is_called_if_defined(self):
-        class TestJobOnSuccess(Job):
-            foo = fields.InstanceHashField()
-
-            def on_success(self, queue, result):
-                self.foo.hset(result)
-
-            def run(self, queue):
-                return 'bar'
 
         job = TestJobOnSuccess.add_job(identifier='job:1', queue_name='test')
-        worker = Worker('test', max_loops=1, job_model=TestJobOnSuccess)
+        worker = Worker('test', max_loops=1)
         worker.run()
 
         self.assertEqual(job.foo.hget(), 'bar')
 
     def test_job_on_started_is_called_if_defined(self):
-        class TestJobOnSarted(Job):
-            foo = fields.InstanceHashField()
-
-            def on_started(self, queue):
-                self.foo.hset('bar')
-
-            def run(self, queue):
-                pass
 
         job = TestJobOnSarted.add_job(identifier='job:1', queue_name='test')
-        worker = Worker('test', max_loops=1, job_model=TestJobOnSarted)
+        worker = Worker('test', max_loops=1)
         worker.run()
 
         self.assertEqual(job.foo.hget(), 'bar')
 
     def test_job_on_error_is_called_if_defined(self):
-        class TestJobOnError(Job):
-            # run method not overriden, will fail
-            foo = fields.InstanceHashField()
-
-            def on_error(self, queue, exception, trace):
-                self.foo.hset('bar')
 
         job = TestJobOnError.add_job(identifier='job:1', queue_name='test')
-        worker = Worker('test', max_loops=1, job_model=TestJobOnError)
+        worker = Worker('test', max_loops=1)
         worker.run()
 
         self.assertEqual(job.foo.hget(), 'bar')
 
     def test_job_on_skipped_is_called_if_defined(self):
-        class TestJobOnSkipped(Job):
-            foo = fields.InstanceHashField()
-
-            def on_skipped(self, queue):
-                self.foo.hset('bar')
 
         job = TestJobOnSkipped.add_job(identifier='job:1', queue_name='test')
         job.status.hset(STATUSES.CANCELED)
-        worker = Worker('test', max_loops=1, job_model=TestJobOnSkipped)
+        worker = Worker('test', max_loops=1)
         worker.run()
 
         self.assertEqual(job.foo.hget(), 'bar')
 
     def test_job_on_requeued_is_called_if_defined(self):
-        class TestJobOnRequeued(Job):
-            # run method not overriden, will fail
-            foo = fields.InstanceHashField()
-
-            def on_requeued(self, queue):
-                self.foo.hset('bar')
 
         job = TestJobOnRequeued.add_job(identifier='job:1', queue_name='test')
-        worker = Worker('test', max_loops=1, job_model=TestJobOnRequeued, requeue_times=1)
+        worker = Worker('test', max_loops=1, requeue_times=1)
         worker.run()
 
         self.assertEqual(job.foo.hget(), 'bar')
@@ -957,8 +957,8 @@ class WorkerRunTests(LimpydBaseTest):
         worker.run()
         queue_foo = Queue.get_queue('foo')
         queue_bar = Queue.get_queue('bar')
-        self.assertEqual(queue_foo.success.lmembers(), [job_foo.pk.get()])
-        self.assertEqual(queue_bar.success.lmembers(), [job_bar.pk.get()])
+        self.assertEqual(queue_foo.success.lmembers(), [job_foo.ident])
+        self.assertEqual(queue_bar.success.lmembers(), [job_bar.ident])
 
 
 class WorkerConfigBaseTests(LimpydBaseTest):
@@ -1028,13 +1028,6 @@ class WorkerConfigArgumentsTests(WorkerConfigBaseTests):
     def test_queues_argument(self):
         conf = WorkerConfig(self.mkargs('--queues=foo'))
         self.assertEqual(conf.options.queues, 'foo')
-
-    def test_job_model_argument(self):
-        conf = WorkerConfig(self.mkargs('--job-model=tests.workers.WorkerConfigArgumentsTests.JobModel'))
-        self.assertEqual(conf.options.job_model, self.JobModel)
-
-        with self.assertSystemExit(in_stderr='Unable to import "job_model"'):
-            WorkerConfig(self.mkargs('--job-model=foo.bar'))
 
     def test_queue_model_argument(self):
         conf = WorkerConfig(self.mkargs('--queue-model=tests.workers.WorkerConfigArgumentsTests.QueueModel'))
@@ -1208,10 +1201,6 @@ class WorkerConfigRunTests(WorkerConfigBaseTests):
     class WorkerClass(Worker):
         pass
 
-    class JobModelOtherDB(Job):
-        namespace = 'WorkerConfigRunTests'
-        database = other_database
-
     class QueueModelOtherDB(Queue):
         namespace = 'WorkerConfigRunTests'
         database = other_database
@@ -1264,11 +1253,10 @@ class WorkerConfigRunTests(WorkerConfigBaseTests):
 
     def test_prepare_models(self):
         conf = WorkerConfig(self.mkargs('--queues=foo --database=localhost:6379:13'
-                                        ' --job-model=tests.workers.WorkerConfigRunTests.JobModelOtherDB'
                                         ' --queue-model=tests.workers.WorkerConfigRunTests.QueueModelOtherDB'
                                         ' --error-model=tests.workers.WorkerConfigRunTests.ErrorModelOtherDB'))
         conf.prepare_models()
-        for model_name in ('job', 'queue', 'error'):
+        for model_name in ('queue', 'error'):
             model = getattr(conf.options, '%s_model' % model_name)
             self.assertEqual(model.database.connection_settings['db'], 13)
 

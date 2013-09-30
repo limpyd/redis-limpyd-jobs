@@ -129,8 +129,8 @@ class QueueTests(LimpydBaseTest):
         queue = Queue.get_queue(name='test')
         attended_timestamp = datetime_to_score(parse(job2.delayed_until.hget()))
 
-        job_pk, timestamp = queue.first_delayed
-        self.assertEqual(job_pk, job2.pk.get())
+        job_ident, timestamp = queue.first_delayed
+        self.assertEqual(job_ident, job2.ident)
         self.assertEqual(timestamp, attended_timestamp)
 
         timestamp = queue.first_delayed_time
@@ -143,52 +143,52 @@ class QueueTests(LimpydBaseTest):
         job = Job(identifier='job:1', delayed_until=str(delayed_until))
 
         queue = Queue.get_queue(name='test')
-        queue.delay_job(job.pk.get(), delayed_until)
+        queue.delay_job(job, delayed_until)
 
         delayed_jobs = queue.delayed.zrange(0, -1, withscores=True)
-        self.assertEqual(delayed_jobs, [(job.pk.get(), timestamp)])
+        self.assertEqual(delayed_jobs, [(job.ident, timestamp)])
 
         # test a non-delayed job
         job2 = Job(identifier='job:2')
-        queue.enqueue_job(job2.pk.get())
+        queue.enqueue_job(job2)
 
         delayed_jobs = queue.delayed.zrange(0, -1, withscores=True)
-        self.assertEqual(delayed_jobs, [(job.pk.get(), timestamp)])
+        self.assertEqual(delayed_jobs, [(job.ident, timestamp)])
 
     def test_enqueue_job_should_add_the_job_to_the_waiting_list(self):
         job = Job(identifier='job:1')
 
         queue = Queue.get_queue(name='test')
-        queue.enqueue_job(job.pk.get())
+        queue.enqueue_job(job)
 
         waiting_jobs = queue.waiting.lmembers()
-        self.assertEqual(waiting_jobs, [job.pk.get()])
+        self.assertEqual(waiting_jobs, [job.ident])
 
         # test a delayed job
         delayed_until = datetime.utcnow() + timedelta(seconds=1)
         job2 = Job(identifier='job:2', delayed_until=str(delayed_until))
-        queue.delay_job(job2.pk.get(), delayed_until)
+        queue.delay_job(job2, delayed_until)
 
         waiting_jobs = queue.waiting.lmembers()
-        self.assertEqual(waiting_jobs, [job.pk.get()])
+        self.assertEqual(waiting_jobs, [job.ident])
 
     def test_enqueue_job_can_prepend_jobs(self):
         queue = Queue.get_queue(name='test')
 
         job = Job(identifier='job:1')
-        queue.enqueue_job(job.pk.get())
+        queue.enqueue_job(job)
         waiting_jobs = queue.waiting.lmembers()
-        self.assertEqual(waiting_jobs, [job.pk.get()])
+        self.assertEqual(waiting_jobs, [job.ident])
 
         job2 = Job(identifier='job:2')
-        queue.enqueue_job(job2.pk.get())
+        queue.enqueue_job(job2)
         waiting_jobs = queue.waiting.lmembers()
-        self.assertEqual(waiting_jobs, [job.pk.get(), job2.pk.get()])
+        self.assertEqual(waiting_jobs, [job.ident, job2.ident])
 
         job3 = Job(identifier='job:3')
-        queue.enqueue_job(job3.pk.get(), prepend=True)
+        queue.enqueue_job(job3, prepend=True)
         waiting_jobs = queue.waiting.lmembers()
-        self.assertEqual(waiting_jobs, [job3.pk.get(), job.pk.get(), job2.pk.get()])
+        self.assertEqual(waiting_jobs, [job3.ident, job.ident, job2.ident])
 
     def test_requeue_delayed_jobs_put_back_ready_delayed_jobs_to_the_waiting_list(self):
         queue = Queue.get_queue(name='test')
@@ -203,7 +203,7 @@ class QueueTests(LimpydBaseTest):
         self.assertEqual(job2.status.hget(), STATUSES.DELAYED)
 
         # must not move any jobs, too soon
-        queue.requeue_delayed_jobs(job_model=Job)
+        queue.requeue_delayed_jobs()
         self.assertEqual(Queue.count_waiting_jobs('test'), 0)
         self.assertEqual(Queue.count_delayed_jobs('test'), 2)
 
@@ -213,7 +213,7 @@ class QueueTests(LimpydBaseTest):
         sleep(1)
 
         # now we should have one job in the waiting list
-        queue.requeue_delayed_jobs(job_model=Job)
+        queue.requeue_delayed_jobs()
         self.assertEqual(Queue.count_waiting_jobs('test'), 1)
         self.assertEqual(Queue.count_delayed_jobs('test'), 1)
 
@@ -221,9 +221,9 @@ class QueueTests(LimpydBaseTest):
         self.assertEqual(job2.status.hget(), STATUSES.WAITING)
 
         waiting_jobs = queue.waiting.lmembers()
-        self.assertEqual(waiting_jobs, [job2.pk.get()])
+        self.assertEqual(waiting_jobs, [job2.ident])
         delayed_jobs = queue.delayed.zrange(0, -1, withscores=True)
-        self.assertEqual(delayed_jobs[0][0], job1.pk.get())
+        self.assertEqual(delayed_jobs[0][0], job1.ident)
 
     def test_requeue_delayed_jobs_should_abort_if_another_thread_works_on_it(self):
         queue = Queue.get_queue(name='test')
@@ -244,11 +244,15 @@ class QueueTests(LimpydBaseTest):
         # wait until the job should be ready
         sleep(0.5)
 
-        queue.requeue_delayed_jobs(job_model=Job)
+        queue.requeue_delayed_jobs()
 
         # the requeue must have done nothing
         self.assertEqual(Queue.count_waiting_jobs('test'), 0)
         self.assertEqual(Queue.count_delayed_jobs('test'), 1)
+
+
+class JobFooBar(Job):
+    pass
 
 
 class JobTests(LimpydBaseTest):
@@ -257,6 +261,31 @@ class JobTests(LimpydBaseTest):
         job_status, job_priority = job.hmget('status', 'priority')
         self.assertEqual(job_status, status)
         self.assertEqual(job_priority, priority)
+
+    def test_get_model_repr_should_return_the_string_repr_of_the_model(self):
+        self.assertEqual(Job.get_model_repr(), 'limpyd_jobs.models.Job')
+        job = Job()
+        self.assertEqual(job.get_model_repr(), 'limpyd_jobs.models.Job')
+
+        self.assertEqual(JobFooBar.get_model_repr(), 'tests.models.JobFooBar')
+        job = JobFooBar()
+        self.assertEqual(job.get_model_repr(), 'tests.models.JobFooBar')
+
+    def test_ident_should_return_a_string_repr_of_the_job(self):
+        job = Job.add_job(identifier='job:1', queue_name='test')
+        self.assertEqual(job.ident, 'limpyd_jobs.models.Job:%s' % job.pk.get())
+
+        job = JobFooBar.add_job(identifier='foobar:1', queue_name='foobar')
+        self.assertEqual(job.ident, 'tests.models.JobFooBar:%s' % job.pk.get())
+
+    def test_get_from_ident_should_return_a_job(self):
+        job = Job.add_job(identifier='job:1', queue_name='test')
+        test_job = Job.get_from_ident('limpyd_jobs.models.Job:%s' % job.pk.get())
+        self.assertEqual(job.ident, test_job.ident)
+
+        job = JobFooBar.add_job(identifier='foobar:1', queue_name='foobar')
+        test_job = Job.get_from_ident('tests.models.JobFooBar:%s' % job.pk.get())
+        self.assertEqual(job.ident, test_job.ident)
 
     def test_adding_a_job_should_create_a_queue_with_the_job(self):
         job = Job.add_job(identifier='job:1', queue_name='test', priority=5)
@@ -272,7 +301,7 @@ class JobTests(LimpydBaseTest):
 
         # check that the job is in the queue
         jobs = queue.waiting.lrange(0, -1)
-        self.assertEqual(jobs, [str(job.pk.get())])
+        self.assertEqual(jobs, [job.ident])
 
         # ... with the correct status and priority
         self.assert_job_status_and_priority(job, STATUSES.WAITING, '5')
@@ -329,7 +358,7 @@ class JobTests(LimpydBaseTest):
         job2 = Job.add_job(identifier='job:1', queue_name='test', priority=3)
 
         # only one job
-        self.assertEqual(job1.pk.get(), job2.pk.get())
+        self.assertEqual(job1.ident, job2.ident)
         # is in high priority queue
         queue = Queue.get_queue(name='test', priority=3)
         self.assertEqual(queue.waiting.llen(), 1)
@@ -347,7 +376,7 @@ class JobTests(LimpydBaseTest):
         job2 = Job.add_job(identifier='job:1', queue_name='test', priority=1)
 
         # only one job
-        self.assertEqual(job1.pk.get(), job2.pk.get())
+        self.assertEqual(job1.ident, job2.ident)
         # is in high priority queue
         queue = Queue.get_queue(name='test', priority=3)
         self.assertEqual(queue.waiting.llen(), 1)
@@ -367,7 +396,7 @@ class JobTests(LimpydBaseTest):
         queue2 = Queue.get_queue(name='test', priority=2)
 
         # only one job
-        self.assertEqual(job1.pk.get(), job2.pk.get())
+        self.assertEqual(job1.ident, job2.ident)
         # not anymore in queue with priority 1
         self.assertEqual(queue1.waiting.llen(), 0)
         # but now in queue with priority 2
@@ -383,16 +412,16 @@ class JobTests(LimpydBaseTest):
 
         job1 = Job.add_job(identifier='job:1', queue_name='test', priority=1)
         job2 = Job.add_job(identifier='job:2', queue_name='test', priority=1)
-        self.assertEqual(queue.waiting.lmembers(), [job1.pk.get(), job2.pk.get()])
+        self.assertEqual(queue.waiting.lmembers(), [job1.ident, job2.ident])
 
         Job.add_job(identifier='job:2', queue_name='test', priority=1, prepend=True)
-        self.assertEqual(queue.waiting.lmembers(), [job2.pk.get(), job1.pk.get()])
+        self.assertEqual(queue.waiting.lmembers(), [job2.ident, job1.ident])
 
     def test_prepending_a_new_job_should_add_it_at_the_beginning(self):
         job1 = Job.add_job(identifier='job:1', queue_name='test', priority=1)
         job2 = Job.add_job(identifier='job:2', queue_name='test', priority=1, prepend=True)
         queue = Queue.get_queue(name='test', priority=1)
-        self.assertEqual(queue.waiting.lmembers(), [job2.pk.get(), job1.pk.get()])
+        self.assertEqual(queue.waiting.lmembers(), [job2.ident, job1.ident])
 
     def test_duration_should_compute_end_start_difference(self):
         start = datetime.utcnow()
@@ -631,6 +660,7 @@ class ErrorTests(LimpydBaseTest):
         when = datetime(2012, 9, 29, 22, 58, 56)
         job = Job.add_job(identifier='job:1', queue_name='test')
         error = Error.add_error(queue_name='test', job=job, error=e, when=when)
+        self.assertEqual(error.job_model_repr.hget(), job.get_model_repr())
         self.assertEqual(error.job_pk.hget(), job.pk.get())
         self.assertEqual(error.identifier.hget(), 'job:1')
         self.assertEqual(list(Error.collection(job_pk=job.pk.get())), [error.pk.get()])

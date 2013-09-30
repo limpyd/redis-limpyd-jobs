@@ -59,7 +59,7 @@ These models implement the minimum stuff you need to run jobs asynchronously:
     >> [] []
     # two jobs in success (show PKs of jobs)
     print queue1.success.lmembers(), queue2.success.lmembers()
-    >> ['1', '2']
+    >> ['limpyd_jobs.models.Job:1', 'limpyd_jobs.models.Job:2']
 
     # Check our jobs statuses
     print job1.status.hget() == STATUSES.SUCCESS
@@ -184,6 +184,10 @@ Note that if you don't subclass the `Job` model, you can pass the `queue_model` 
 
 #### Job properties and methods
 
+##### `ident` (property)
+
+The `ident` property is a string representation of the model + the primary key of the job, saved in queues, allowing the retrieval of the Job.
+
 ##### `duration` (property)
 
 The `duration` property simply returns the time used to compute the job. The return value is a `datetime.timedelta` object if the `start` and `end` fields are set, or `None` on the other case.
@@ -245,7 +249,7 @@ Arguments:
 
 ##### `on_started` (ghost method)
 
-This method, if defined on you job model (it's not there by default, ie "ghost") is called when the job is fetched by the worker and about to be executed ("waiting" status)
+This method, if defined on your job model (it's not there by default, ie "ghost") is called when the job is fetched by the worker and about to be executed ("waiting" status)
 
 Arguments:
 
@@ -254,7 +258,7 @@ Arguments:
 
 ##### `on_success` (ghost method)
 
-This method, if defined on you job model (it's not there by default, ie "ghost") is called by the worker when the job's execution was a success (it did not raise any exception).
+This method, if defined on your job model (it's not there by default, ie "ghost") is called by the worker when the job's execution was a success (it did not raise any exception).
 
 Arguments:
 
@@ -266,7 +270,7 @@ Arguments:
 
 ##### `on_error` (ghost method)
 
-This method, if defined on you job model (it's not there by default, ie "ghost") is called by the worker when the job's execution failed (an exception was raised)
+This method, if defined on your job model (it's not there by default, ie "ghost") is called by the worker when the job's execution failed (an exception was raised)
 
 Arguments:
 
@@ -281,14 +285,14 @@ Arguments:
 
 ##### `on_skipped` (ghost method)
 
-This method, if defined on you job model (it's not there by default, ie "ghost") is called when the job, just fetched by the worker, could not be executed because of its status, not "waiting".
+This method, if defined on your job model (it's not there by default, ie "ghost") is called when the job, just fetched by the worker, could not be executed because of its status, not "waiting".
 
 - `queue`:
     The queue from which the job was fetched.
 
 ##### `on_requeued` (ghost method)
 
-This method, if defined on you job model (it's not there by default, ie "ghost") is called by the worker when the job failed  and has been  requeued by the worker.
+This method, if defined on your job model (it's not there by default, ie "ghost") is called by the worker when the job failed  and has been  requeued by the worker.
 
 - `queue`:
     The queue from which the job was fetched.
@@ -325,6 +329,20 @@ Arguments:
 
 If you use a subclass of the `Job` model, you can pass additional arguments to the `add_job` method simply by passing them as named arguments, they will be save if a new job is created (but not if an existing job is found in a waiting queue)
 
+##### `get_model_repr`
+
+Returns the string representation of the model, used to compute the `ident` property of a job.
+
+
+##### `get_from_ident`
+
+Returns a job from a string previously got via the `ident` property of a job.
+
+Arguments:
+
+- `ident`
+    A string including the modele representation of a job and it's primary key, as returned by the `ident` property.
+
 
 ### Queue
 
@@ -334,7 +352,7 @@ A Queue stores a list of waiting jobs with a given priority, and keep a list of 
 
 ##### `name`
 
-A string (`InstanceHashField`, indexed), used by the `add_job` method to find the queue in which to store it. Many queues can have the same name, but different priorities.
+A string (`InstanceHashField`, indexed), used by the `add_job` method to find the queue in which to store it. Many queues can have the same names, but different priorities.
 
 This name is also used by a worker to find which queues it needs to wait for.
 
@@ -385,8 +403,8 @@ Put a job in the delayed queue.
 
 Arguments:
 
-- `job_pk`
-    The primary key of the job to delay.
+- `job`
+    The job to delay.
 
 - `delayed_until`
     A `datetime` object specifying when the job should be put back in the waiting queue. It will be converted into a timestamp used as the score of the delayed list, which is a redis sorted-set.
@@ -397,8 +415,8 @@ Put a job in the waiting list.
 
 Arguments:
 
-- `job_pk`
-    The primary key of the job to enqueue.
+- `job`
+    The job to enqueue.
 
 - `prepend=False`
     Set to `True` to add the job at the start of the waiting list, to be the first to be executed.
@@ -406,11 +424,6 @@ Arguments:
 ##### `requeue_delayed_jobs` (method)
 
 This method will check for all jobs in the delayed queue that are now ready to be executed and put them back in the waiting list.
-
-Arguments:
-
-- `job_model`
-    The model used for jobs.
 
 #### Queue class methods
 
@@ -482,6 +495,10 @@ The `Error` model is used to store errors from the jobs that are not successfull
 Its main purpose is to be able to filter errors, by queue name, job identifier, date, exception class name or code. You can use your own subclass of the `Error` model and then store additional fields, and filter on them.
 
 #### Error fields
+
+##### `job_model_repr`
+
+A string (`InstanceHashField`, indexed) to store the string representation of the job's model.
 
 ##### `job_pk`
 
@@ -577,13 +594,9 @@ Each of the following worker's attributes can be set by an argument in the const
 
 Name of the queues to work with. It can be a list/tuple of strings, or a string with names separated by a comma (no spaces), or without comma for a single queue.
 
-Note that all queues must be from the same `queue_model`, and all jobs from the same `job_model`.
+Note that all queues must be from the same `queue_model`.
 
 Default to `None`, but if not set and not defined in a subclass, will raise an `LimpydJobsException`.
-
-##### `job_model`
-
-The model to use for jobs. By default it's the `Job` model included in `limpyd_jobs`, but you can use a subclass of the default model to add fields, methods...
 
 ##### `queue_model`
 
@@ -718,7 +731,7 @@ It's a property, not an attribute, to get the current connection to the redis se
 It's a tuple holding all parameters accepted by the worker's constructor
 
 ```python
-    parameters = ('queues', 'callback', 'queue_model', 'job_model', 'error_model',
+    parameters = ('queues', 'callback', 'queue_model', 'error_model',
                   'logger_name', 'logger_level', 'save_errors',
                   'save_tracebacks', 'max_loops', 'max_duration',
                   'terminate_gracefuly', 'timeout', 'fetch_priorities_delay',
@@ -801,18 +814,18 @@ def wait_for_job(self):
 ```
 Returns a tuple with a queue and a job
 
-This method is called during the loop, to wait for an available job in the waiting lists. When one job is fetched, returns the queue (an instance of the model defined by `queue_model`) on which the job was found, and the job itself (an instance of the model defined by `job_model`).
+This method is called during the loop, to wait for an available job in the waiting lists. When one job is fetched, returns the queue (an instance of the model defined by `queue_model`) on which the job was found, and the job itself.
 
 ##### `get_job`
 
 Signature:
 
 ```python
-def get_job(self, job_pk):
+def get_job(self, job_ident):
 ```
 Returns a job.
 
-Called during `wait_for_job` to get a real job object (an instance of the model defined by `job_model`) based on the primary key fetched from the waiting lists.
+Called during `wait_for_job` to get a real job object based on the job's `ident` (model + pk) fetched from the waiting lists.
 
 ##### `get_queue`
 
@@ -858,7 +871,7 @@ def update_keys(self):
 ```
 Returns nothing.
 
-Calling this method updates the internal `keys` attributes, which contains redis keys of the waiting lists of all queues listened by the worker (the ones with the same name).
+Calling this method updates the internal `keys` attributes, which contains redis keys of the waiting lists of all queues listened by the worker.
 
 It's actually called at the beginning of the `run` method, and at intervals depending on `fetch_priorities_delay`.
 Note that if a queue with a specific priority doesn't exist when this method is called, but later, by adding a job with `add_job`, the worker will ignore it unless this `update_keys` method was called again (programmatically or by waiting at least `fetch_priorities_delay` seconds)
@@ -1105,9 +1118,6 @@ Options:
   --dry-run             Won't execute any job, just starts the worker and
                         finish it immediatly, e.g. --dry-run
   --name=NAME           Name of the Queues to handle e.g. --name=my-queue-name
-  --job-model=JOB_MODEL
-                        Name of the Job model to use, e.g. --job-
-                        model=my.module.JobModel
   --queue-model=QUEUE_MODEL
                         Name of the Queue model to use, e.g. --queue-
                         model=my.module.QueueModel
@@ -1197,7 +1207,7 @@ To run the tests, which are not installed via the `setup.py` file, you can do:
 ```
 $ python run_tests.py
 [...]
-Ran 119 tests in 22.040s
+Ran 130 tests in 18.993s
 
 OK
 ```
@@ -1207,7 +1217,7 @@ Or if you have `nosetests` installed:
 ```
 $ nosetests
 [...]
-Ran 119 tests in 19.887s
+Ran 130 tests in 19.382s
 
 OK
 ```

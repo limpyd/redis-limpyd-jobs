@@ -7,7 +7,11 @@ from limpyd.contrib import database, collection
 from limpyd_extensions import related
 
 from limpyd_jobs import STATUSES, LimpydJobsException
-from .utils import datetime_to_score, compute_delayed_until
+from limpyd_jobs.utils import (
+                               datetime_to_score,
+                               compute_delayed_until,
+                               import_class,
+                               )
 
 __all__ = ('BaseJobsModel', 'Queue', 'Job', 'Error')
 
@@ -52,20 +56,20 @@ class Queue(BaseJobsModel):
 
         return queue
 
-    def delay_job(self, job_pk, delayed_until):
+    def delay_job(self, job, delayed_until):
         """
         Add the job to the delayed list (zset) of the queue.
         """
         timestamp = datetime_to_score(delayed_until)
-        self.delayed.zadd(timestamp, job_pk)
+        self.delayed.zadd(timestamp, job.ident)
 
-    def enqueue_job(self, job_pk, prepend=False):
+    def enqueue_job(self, job, prepend=False):
         """
         Add the job to the waiting list, at the end (it's a fifo list). If
         `prepend` is True, add it at the beginning of the list.
         """
         push_method = getattr(self.waiting, 'lpush' if prepend else 'rpush')
-        push_method(job_pk)
+        push_method(job.ident)
 
     @staticmethod
     def _get_iterable_for_names(names):
@@ -146,7 +150,7 @@ class Queue(BaseJobsModel):
 
         return first_entry[1] if first_entry else None
 
-    def requeue_delayed_jobs(self, job_model):
+    def requeue_delayed_jobs(self):
         """
         Put all delayed jobs that are now ready, back in the queue waiting list
         """
@@ -185,7 +189,7 @@ class Queue(BaseJobsModel):
                     break
 
                 # split into vars for readability
-                job_pk, delayed_until = first_entry
+                job_ident, delayed_until = first_entry
 
                 # if the date of the job is in the future, another work took the
                 # job we wanted, so we let this job here and stop the loop as we
@@ -194,12 +198,12 @@ class Queue(BaseJobsModel):
                     break
 
                 # remove the entry we just got from the delayed ones
-                self.delayed.zrem(job_pk)
+                self.delayed.zrem(job_ident)
 
                 # and add it to the waiting queue
-                job = job_model.get(job_pk)
+                job = Job.get_from_ident(job_ident)
                 job.status.hset(STATUSES.WAITING)
-                self.enqueue_job(job_pk)
+                self.enqueue_job(job)
 
 
 class Job(BaseJobsModel):
@@ -214,6 +218,30 @@ class Job(BaseJobsModel):
 
     queue_model = Queue
     queue_name = None
+
+    @classmethod
+    def get_model_repr(cls):
+        """
+        Return a string representation of the current class
+        """
+        return '%s.%s' % (cls.__module__, cls.__name__)
+
+    @property
+    def ident(self):
+        """
+        Return the string to use in  queues, include the job's class and its pk
+        """
+        return '%s:%s' % (self.get_model_repr(), self.pk.get())
+
+    @classmethod
+    def get_from_ident(self, ident):
+        """
+        Take a string as returned by get_ident and return a job,
+        based on the class representation and the job's pk from the ident
+        """
+        model_repr, job_pk = ident.split(':', 1)
+        klass = import_class(model_repr)
+        return klass.get(job_pk)
 
     @classmethod
     def _get_queue_name(cls, queue_name=None):
@@ -268,7 +296,7 @@ class Job(BaseJobsModel):
             if queue_model is None:
                 queue_model = cls.queue_model
             current_queue = queue_model.get_queue(queue_name, current_priority)
-            current_queue.waiting.lrem(0, job.pk.get())
+            current_queue.waiting.lrem(0, job.ident)
 
         elif fields_if_new:
             job.set_fields(added=str(datetime.utcnow()), **fields_if_new)
@@ -349,9 +377,9 @@ class Job(BaseJobsModel):
         queue = queue_model.get_queue(queue_name, priority)
 
         if in_the_future:
-            queue.delay_job(self.pk.get(), delayed_until)
+            queue.delay_job(self, delayed_until)
         else:
-            queue.enqueue_job(self.pk.get(), prepend)
+            queue.enqueue_job(self, prepend)
 
     # Methods below will be called only if defined, so we don't create them, but
     # feel free to do so if you need to interact on jobs updates
@@ -373,6 +401,7 @@ class Job(BaseJobsModel):
 
 
 class Error(BaseJobsModel):
+    job_model_repr = fields.InstanceHashField(indexable=True)
     job_pk = fields.InstanceHashField(indexable=True)
     identifier = fields.InstanceHashField(indexable=True)
     queue_name = fields.InstanceHashField(indexable=True)
@@ -401,6 +430,7 @@ class Error(BaseJobsModel):
 
         fields = dict(
             queue_name=queue_name,
+            job_model_repr=job.get_model_repr(),
             job_pk=job.pk.get(),
             identifier=getattr(job, '_cached_identifier', job.identifier.hget()),
             date=str(when.date()),
