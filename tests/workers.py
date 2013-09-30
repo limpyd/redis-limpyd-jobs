@@ -17,8 +17,15 @@ from limpyd_jobs import STATUSES, LimpydJobsException, ConfigurationException
 
 from .base import LimpydBaseTest
 
+try:
+    from logging import NullHandler
+except ImportError:  # python 2.6
+    class NullHandler(logging.Handler):
+        def emit(self, record):
+            pass
+
 # no logger for the tests
-null_handler = logging.NullHandler()
+null_handler = NullHandler()
 logger = logging.getLogger('limpyd-jobs')
 logger.addHandler(null_handler)
 
