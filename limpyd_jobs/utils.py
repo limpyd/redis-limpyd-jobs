@@ -78,8 +78,8 @@ def import_class(class_uri):
 def total_seconds(td):
     # Keep backward compatibility with Python 2.6 which doesn't have
     # this method
-    if hasattr(td, 'total_seconds'):
-        return td.total_seconds()
+    if hasattr(td, 'total_seconds'):  # pragma: no cover
+        return td.total_seconds()  # pragma: no cover
     else:
-        return (td.microseconds + (td.seconds + td.days * 24 * 3600) * 10**6) / 10**6
+        return (td.microseconds + (td.seconds + td.days * 24 * 3600) * 10**6) / 10**6  # pragma: no cover
 

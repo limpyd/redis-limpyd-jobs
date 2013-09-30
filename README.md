@@ -46,7 +46,7 @@ These models implement the minimum stuff you need to run jobs asynchronously:
 
     # Create a worker for the queue used previously, asking to call the
     # "do_stuff" function for each job, and to stop after 2 jobs
-    worker = Worker(name='myqueue', callback=do_stuff, max_loops=2)
+    worker = Worker(queues='myqueue', callback=do_stuff, max_loops=2)
 
     # Now really run the jobs
     worker.run()
@@ -89,6 +89,8 @@ If you want to store more information in a job, queue or error, or want to have 
 ### Job
 
 A Job stores all needed informations about a task to run.
+
+Note: If you want to subclass the Job model to add your own fields, `run` method, or whatever, note that the class must be at the first level of a python module (ie not in a parent class or function) to work.
 
 #### Job fields
 
@@ -134,7 +136,7 @@ You can also display the full string of a status:
 A string (`InstanceHashField`, indexed, default = 0) to store the priority of the job.
 
 The priority of a job determines in which Queue object it will be stored.
-A worker listen for all queues with a given name and different priorities, but respecting the priority (reverse) order: the higher the priority, the sooner the job will be executed.
+A worker listen for all queues with some names and different priorities, but respecting the priority (reverse) order: the higher the priority, the sooner the job will be executed.
 
 We choose to use the "`"higher priority is better" way of doing things to give the possibility to always add a job in a higher priority than any other ones.
 
@@ -443,7 +445,7 @@ If you use a subclass of the `Queue` model, you can pass additional arguments to
 
 ##### `get_waiting_keys`
 
-The `get_waiting_keys` class method returns all the existing (waiting) queues with the given names, sorted by priority (reverse order: the highest priorities come first), then names.
+The `get_waiting_keys` class method returns all the existing (waiting) queues with the given names, sorted by priority (reverse order: the highest priorities come first), then by names.
 The returned value is a list of redis keys for each `waiting` lists of matching queues. It's used internally by the workers as argument to the `blpop` redis command.
 
 Arguments:
@@ -492,7 +494,7 @@ Arguments:
 
 The `Error` model is used to store errors from the jobs that are not successfully executed by a worker.
 
-Its main purpose is to be able to filter errors, by queue name, job identifier, date, exception class name or code. You can use your own subclass of the `Error` model and then store additional fields, and filter on them.
+Its main purpose is to be able to filter errors, by queue name, job model, job identifier, date, exception class name or code. You can use your own subclass of the `Error` model and then store additional fields, and filter on them.
 
 #### Error fields
 
@@ -592,7 +594,7 @@ Each of the following worker's attributes can be set by an argument in the const
 
 ##### `queues`
 
-Name of the queues to work with. It can be a list/tuple of strings, or a string with names separated by a comma (no spaces), or without comma for a single queue.
+Names of the queues to work with. It can be a list/tuple of strings, or a string with names separated by a comma (no spaces), or without comma for a single queue.
 
 Note that all queues must be from the same `queue_model`.
 
@@ -640,7 +642,7 @@ To avoid interrupting the execution of a job, if `terminate_gracefully` is set t
 
 The callback is the function to run when a job is fetched. By default it's the `execute` method of the worker (which calls the `run` method of jobs, which, if not overridden, raises a `NotImplemented` error) , but you can pass any function that accept a job and a queue as argument.
 
-Using the queue's name, and the job's identifier, you can manage many actions depending on the queue if needed.
+Using the queue's name, and the job's identifier+model (via `job.ident`), you can manage many actions depending on the queue if needed.
 
 If this callback (or the `execute` method) raises an exception, the job is considered in error. In the other case, it's considered successful and the return value is passed to the `job_success` method, to let you do what you want with it.
 
@@ -1117,7 +1119,8 @@ Options:
   --print-options       Print options used by the worker, e.g. --print-options
   --dry-run             Won't execute any job, just starts the worker and
                         finish it immediatly, e.g. --dry-run
-  --name=NAME           Name of the Queues to handle e.g. --name=my-queue-name
+  --queues=QUEUES       Name of the Queues to handle, comma separated e.g.
+                        --queues=queue1,queue2
   --queue-model=QUEUE_MODEL
                         Name of the Queue model to use, e.g. --queue-
                         model=my.module.QueueModel
@@ -1180,19 +1183,19 @@ Options:
 
 Except for `--pythonpath`, `--worker-config`, `--print-options`,`--dry-run`, `--worker-class` and `--no-title`, all options will be passed to the worker.
 
-So, if you use the default models, the default worker with its default options, and to launch a worker to work on the queue `queue-name`, all you need to do is:
+So, if you use the default models, the default worker with its default options, and to launch a worker to work on the queue "queue-name", all you need to do is:
 
 ```bash
-limpyd-jobs-worker --name=queue-name
+limpyd-jobs-worker --queues=queue-name  --callback=python.path.to.callback
 ```
 
 We use the `setproctitle` module to display useful informations in the process name, to have stuff like this:
 
 ```
-limpyd-jobs-worker#1566090 [init] queue=foo
-limpyd-jobs-worker#1566090 [starting] queue=foo loop=0/1000 waiting=10 delayed=0
-limpyd-jobs-worker#1566090 [running] queue=foo loop=1/1000 waiting=9 delayed=2 duration=0:00:15
-limpyd-jobs-worker#1566090 [terminated] queue=foo loop=10/1000 waiting=0 delayed=0 duration=0:12:27
+limpyd-jobs-worker#1566090 [init] queues=foo,bar
+limpyd-jobs-worker#1566090 [starting] queues=foo,bar loop=0/1000 waiting=10 delayed=0
+limpyd-jobs-worker#1566090 [running] queues=foo,bar loop=1/1000 waiting=9 delayed=2 duration=0:00:15
+limpyd-jobs-worker#1566090 [terminated] queues=foo,bar loop=10/1000 waiting=0 delayed=0 duration=0:12:27
 ```
 
 You can disable it by passing the `--no-title` argument.

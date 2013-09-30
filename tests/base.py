@@ -7,12 +7,14 @@ else:
     import unittest2 as unittest
 
 from StringIO import StringIO
+from datetime import timedelta
 
 from limpyd.database import DEFAULT_CONNECTION_SETTINGS
 from limpyd.contrib.database import PipelineDatabase
 
 from limpyd_jobs import STATUSES
 from limpyd_jobs.models import BaseJobsModel
+from limpyd_jobs.utils import total_seconds
 
 TEST_CONNECTION_SETTINGS = DEFAULT_CONNECTION_SETTINGS.copy()
 TEST_CONNECTION_SETTINGS['db'] = 15
@@ -178,3 +180,9 @@ class LimpydBaseTestTest(LimpydBaseTest):
 
         with self.assertRaises(KeyError):
             STATUSES['UNKNOWN']
+
+
+class UtilsTest(LimpydBaseTest):
+    def test_assert_total_seconds_works(self):
+        td = timedelta(days=2, seconds=2)
+        self.assertEqual(total_seconds(td), 3600*48+2)

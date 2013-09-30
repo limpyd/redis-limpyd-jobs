@@ -1,3 +1,11 @@
+V 0.0.8  2013-09-30
+
+    * A worker can now manage many queues with jobs from many models
+    * No need to pass `job_model` as it's saved in queues with the jobs pks
+    * More methods to enhance jobs (`on_*`)
+    * Add a `max_duration` argument to the worker
+    * Correct dry-run mode
+
 V 0.0.7  2013-09-16
 
     * Config for nosetests

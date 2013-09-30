@@ -57,7 +57,7 @@ Simple example
 
         # Create a worker for the queue used previously, asking to call the
         # "do_stuff" function for each job, and to stop after 2 jobs
-        worker = Worker(name='myqueue', callback=do_stuff, max_loops=2)
+        worker = Worker(queues='myqueue', callback=do_stuff, max_loops=2)
 
         # Now really run the jobs
         worker.run()
@@ -109,6 +109,10 @@ Job
 ~~~
 
 A Job stores all needed informations about a task to run.
+
+Note: If you want to subclass the Job model to add your own fields,
+``run`` method, or whatever, note that the class must be at the first
+level of a python module (ie not in a parent class or function) to work.
 
 Job fields
 ^^^^^^^^^^
@@ -177,7 +181,7 @@ A string (``InstanceHashField``, indexed, default = 0) to store the
 priority of the job.
 
 The priority of a job determines in which Queue object it will be
-stored. A worker listen for all queues with a given name and different
+stored. A worker listen for all queues with some names and different
 priorities, but respecting the priority (reverse) order: the higher the
 priority, the sooner the job will be executed.
 
@@ -637,9 +641,10 @@ existing queue is found)
 
 The ``get_waiting_keys`` class method returns all the existing (waiting)
 queues with the given names, sorted by priority (reverse order: the
-highest priorities come first), then names. The returned value is a list
-of redis keys for each ``waiting`` lists of matching queues. It's used
-internally by the workers as argument to the ``blpop`` redis command.
+highest priorities come first), then by names. The returned value is a
+list of redis keys for each ``waiting`` lists of matching queues. It's
+used internally by the workers as argument to the ``blpop`` redis
+command.
 
 Arguments:
 
@@ -698,9 +703,9 @@ The ``Error`` model is used to store errors from the jobs that are not
 successfully executed by a worker.
 
 Its main purpose is to be able to filter errors, by queue name, job
-identifier, date, exception class name or code. You can use your own
-subclass of the ``Error`` model and then store additional fields, and
-filter on them.
+model, job identifier, date, exception class name or code. You can use
+your own subclass of the ``Error`` model and then store additional
+fields, and filter on them.
 
 Error fields
 ^^^^^^^^^^^^
@@ -839,9 +844,9 @@ described here together.
 ``queues``
 ''''''''''
 
-Name of the queues to work with. It can be a list/tuple of strings, or a
-string with names separated by a comma (no spaces), or without comma for
-a single queue.
+Names of the queues to work with. It can be a list/tuple of strings, or
+a string with names separated by a comma (no spaces), or without comma
+for a single queue.
 
 Note that all queues must be from the same ``queue_model``.
 
@@ -924,8 +929,9 @@ method of jobs, which, if not overridden, raises a ``NotImplemented``
 error) , but you can pass any function that accept a job and a queue as
 argument.
 
-Using the queue's name, and the job's identifier, you can manage many
-actions depending on the queue if needed.
+Using the queue's name, and the job's identifier+model (via
+``job.ident``), you can manage many actions depending on the queue if
+needed.
 
 If this callback (or the ``execute`` method) raises an exception, the
 job is considered in error. In the other case, it's considered
@@ -1613,7 +1619,8 @@ Instead of explaining all arguments, see below the result of the
       --print-options       Print options used by the worker, e.g. --print-options
       --dry-run             Won't execute any job, just starts the worker and
                             finish it immediatly, e.g. --dry-run
-      --name=NAME           Name of the Queues to handle e.g. --name=my-queue-name
+      --queues=QUEUES       Name of the Queues to handle, comma separated e.g.
+                            --queues=queue1,queue2
       --queue-model=QUEUE_MODEL
                             Name of the Queue model to use, e.g. --queue-
                             model=my.module.QueueModel
@@ -1678,22 +1685,22 @@ Except for ``--pythonpath``, ``--worker-config``,
 ``--no-title``, all options will be passed to the worker.
 
 So, if you use the default models, the default worker with its default
-options, and to launch a worker to work on the queue ``queue-name``, all
+options, and to launch a worker to work on the queue "queue-name", all
 you need to do is:
 
 .. code:: bash
 
-    limpyd-jobs-worker --name=queue-name
+    limpyd-jobs-worker --queues=queue-name  --callback=python.path.to.callback
 
 We use the ``setproctitle`` module to display useful informations in the
 process name, to have stuff like this:
 
 ::
 
-    limpyd-jobs-worker#1566090 [init] queue=foo
-    limpyd-jobs-worker#1566090 [starting] queue=foo loop=0/1000 waiting=10 delayed=0
-    limpyd-jobs-worker#1566090 [running] queue=foo loop=1/1000 waiting=9 delayed=2 duration=0:00:15
-    limpyd-jobs-worker#1566090 [terminated] queue=foo loop=10/1000 waiting=0 delayed=0 duration=0:12:27
+    limpyd-jobs-worker#1566090 [init] queues=foo,bar
+    limpyd-jobs-worker#1566090 [starting] queues=foo,bar loop=0/1000 waiting=10 delayed=0
+    limpyd-jobs-worker#1566090 [running] queues=foo,bar loop=1/1000 waiting=9 delayed=2 duration=0:00:15
+    limpyd-jobs-worker#1566090 [terminated] queues=foo,bar loop=10/1000 waiting=0 delayed=0 duration=0:12:27
 
 You can disable it by passing the ``--no-title`` argument.
 

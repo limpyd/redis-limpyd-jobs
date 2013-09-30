@@ -94,7 +94,7 @@ class FullNameWorker(Worker):
     """
 
     # we work on a specific queue
-    name = QUEUE_NAME
+    queues = [QUEUE_NAME]
 
     # we use our own models
     queue_model = MyQueue
