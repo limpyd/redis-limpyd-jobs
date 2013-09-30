@@ -73,3 +73,13 @@ def import_class(class_uri):
         module = import_class(module_uri)
 
     return getattr(module, class_name)
+
+
+def total_seconds(td):
+    # Keep backward compatibility with Python 2.6 which doesn't have
+    # this method
+    if hasattr(td, 'total_seconds'):
+        return td.total_seconds()
+    else:
+        return (td.microseconds + (td.seconds + td.days * 24 * 3600) * 10**6) / 10**6
+

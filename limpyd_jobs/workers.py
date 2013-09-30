@@ -14,7 +14,7 @@ from limpyd.exceptions import DoesNotExist
 
 from limpyd_jobs import STATUSES, LimpydJobsException, ConfigurationException
 from limpyd_jobs.models import Queue, Job, Error
-from limpyd_jobs.utils import import_class
+from limpyd_jobs.utils import import_class, total_seconds
 
 LOGGER_NAME = 'limpyd-jobs'
 logger = logging.getLogger(LOGGER_NAME)
@@ -868,7 +868,7 @@ class WorkerConfig(object):
             # and about elapsed time
             if self.worker.start_date:
                 duraiton_message = 'duration=%s'
-                duration_args = (timedelta(seconds=int(round(self.worker.elapsed.total_seconds()))), )
+                duration_args = (timedelta(seconds=int(round(total_seconds(self.worker.elapsed)))), )
                 if self.worker.max_duration:
                     duraiton_message += '/%s'
                     duration_args += (self.worker.max_duration, )

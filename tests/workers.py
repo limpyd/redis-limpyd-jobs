@@ -14,6 +14,7 @@ from limpyd.exceptions import DoesNotExist
 from limpyd_jobs.models import Queue, Job, Error
 from limpyd_jobs.workers import Worker, WorkerConfig
 from limpyd_jobs import STATUSES, LimpydJobsException, ConfigurationException
+from limpyd_jobs.utils import total_seconds
 
 from .base import LimpydBaseTest
 
@@ -1243,13 +1244,13 @@ class WorkerConfigRunTests(WorkerConfigBaseTests):
         self.assertEqual('test-script [waiting] queues=foo loop=0/1000 waiting=0 delayed=0', getproctitle())
 
         conf.worker.start_date = datetime.utcnow() - timedelta(seconds=10)
-        duration = timedelta(seconds=int(conf.worker.elapsed.total_seconds()))
+        duration = timedelta(seconds=int(total_seconds(conf.worker.elapsed)))
         self.assertEqual('test-script [waiting] queues=foo loop=0/1000 '
                          'waiting=0 delayed=0 duration=%s' % duration,
                          conf.get_proc_title())
 
         conf.worker.max_duration = timedelta(seconds=15)
-        duration = timedelta(seconds=int(conf.worker.elapsed.total_seconds()))
+        duration = timedelta(seconds=int(total_seconds(conf.worker.elapsed)))
         self.assertEqual('test-script [waiting] queues=foo loop=0/1000 '
                          'waiting=0 delayed=0 duration=%s/0:00:15' % duration,
                          conf.get_proc_title())
