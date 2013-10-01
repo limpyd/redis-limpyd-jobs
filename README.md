@@ -614,7 +614,7 @@ The model to use for saving errors. By default it's the `Error` model included i
 
 ##### `logger_level`
 
-It's the level set for the logger created with the name defined in `logger_name`.
+It's the level set for the logger created with the name defined in `logger_name`, default to `logging.INFO`.
 
 ##### `save_errors`
 
@@ -1136,7 +1136,7 @@ Options:
                         The base name to use for logging, e.g. --logger-base-
                         name="limpyd-jobs.%s"
   --logger-level=LOGGER_LEVEL
-                        The level to use for logging, e.g. --worker-class=INFO
+                        The level to use for logging, e.g. --worker-class=ERROR
   --save-errors         Save job errors in the Error model, e.g. --save-errors
   --no-save-errors      Do not save job errors in the Error model, e.g. --no-
                         save-errors
@@ -1200,6 +1200,14 @@ limpyd-jobs-worker#1566090 [terminated] queues=foo,bar loop=10/1000 waiting=0 de
 
 You can disable it by passing the `--no-title` argument.
 
+Note that if no logging handler is set for the `logger-name`, a `StreamHandler` formatter will be automatically added by the script, given logs like:
+
+```
+[19122] 2013-10-02 00:51:24,158 (limpyd-jobs) WARNING  [038480] [test|job:1] job skipped (current status: SUCCESS)
+```
+
+(the format used is `"[%(process)d] %(asctime)s (%(name)s) %(levelname)-8s %(message)s"`)
+
 
 ## Tests
 
@@ -1210,7 +1218,7 @@ To run the tests, which are not installed via the `setup.py` file, you can do:
 ```
 $ python run_tests.py
 [...]
-Ran 130 tests in 18.993s
+Ran 136 tests in 19.353s
 
 OK
 ```
@@ -1220,7 +1228,7 @@ Or if you have `nosetests` installed:
 ```
 $ nosetests
 [...]
-Ran 130 tests in 19.382s
+Ran 136 tests in 20.471s
 
 OK
 ```

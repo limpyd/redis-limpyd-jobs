@@ -60,7 +60,7 @@ class WorkerArgumentsTests(LimpydBaseTest):
         self.assertEqual(worker.error_model, Error)
         self.assertEqual(worker.callback, worker.execute)
         self.assertEqual(worker.logger, logging.getLogger('limpyd-jobs'))
-        self.assertEqual(worker.logger.level, logging.ERROR)
+        self.assertEqual(worker.logger.level, logging.INFO)
         self.assertEqual(worker.max_loops, 1000)
         self.assertIsNone(worker.max_duration)
         self.assertEqual(worker.save_errors, True)
@@ -177,7 +177,7 @@ class WorkerArgumentsTests(LimpydBaseTest):
                     queue_model=OtherTestQueue,
                     error_model=OtherTestError,
                     logger_name='limpyd-jobs.workerfoo.testfoo',
-                    logger_level=logging.INFO,
+                    logger_level=logging.ERROR,
                     max_loops=200,
                     max_duration=1800,
                     terminate_gracefuly=True,
@@ -194,7 +194,7 @@ class WorkerArgumentsTests(LimpydBaseTest):
         self.assertEqual(worker.queue_model, OtherTestQueue)
         self.assertEqual(worker.error_model, OtherTestError)
         self.assertEqual(worker.logger, logging.getLogger('limpyd-jobs.workerfoo.testfoo'))
-        self.assertEqual(worker.logger.level, logging.INFO)
+        self.assertEqual(worker.logger.level, logging.ERROR)
         self.assertEqual(worker.max_loops, 200)
         self.assertEqual(worker.max_duration, timedelta(seconds=1800))
         self.assertEqual(worker.save_errors, True)
@@ -1332,7 +1332,7 @@ class WorkerConfigRunTests(WorkerConfigBaseTests):
         handler = conf.worker.logger.handlers[0]
         self.assertIsInstance(handler, logging.StreamHandler)
         formatter = handler.formatter
-        self.assertEqual(formatter._fmt, '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        self.assertEqual(formatter._fmt, '[%(process)d] %(asctime)s (%(name)s) %(levelname)-8s %(message)s')
 
         # restore null handler
         logger.removeHandler(handler)

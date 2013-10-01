@@ -1,6 +1,7 @@
 import logging
 import signal
 import sys
+import threading
 import traceback
 import os.path
 from datetime import datetime, timedelta
@@ -31,7 +32,7 @@ class Worker(object):
 
     # logging information
     logger_name = LOGGER_NAME
-    logger_level = logging.ERROR
+    logger_level = logging.INFO
     save_errors = True
     save_tracebacks = True
 
@@ -177,7 +178,7 @@ class Worker(object):
         Return an identifier for the worker to use in logging
         """
         if not hasattr(self, '_id'):
-            self._id = '%x' % id(self)
+            self._id = str(threading.current_thread().ident + id(self))[-6:]
         return self._id
 
     def log(self, message, level='info'):
@@ -825,7 +826,16 @@ class WorkerConfig(object):
 
         if not self.worker.logger.handlers:
             handler = logging.StreamHandler()
-            handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+            handler.setFormatter(logging.Formatter(
+                                        ' '.join(['[%(process)d]',
+                                                  # '%(asctime)s,%(msecs).03d',
+                                                  '%(asctime)s',
+                                                  '(%(name)s)',
+                                                  '%(levelname)-8s',
+                                                  '%(message)s',
+                                                 ])
+                                        # , '%y.%m.%d:%H.%M.%S'
+                                    ))
             self.worker.logger.addHandler(handler)
 
         if self.options.dry_run:
