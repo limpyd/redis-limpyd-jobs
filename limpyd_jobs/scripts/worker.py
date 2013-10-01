@@ -78,15 +78,28 @@ class LaxOptionParser(OptionParser):
         paths = []
         do_paths = False
         for arg in args:
-            if do_paths and not arg.startswith('-'):
+
+            if arg == '--pythonpath':
+                # space separated
+                do_paths = True
+                continue
+
+            elif arg.startswith('--pythonpath='):
+                # '=' separated
+                do_paths = True
+                arg = arg[13:]
+
+            if do_paths:
+                if arg.startswith('-'):
+                    # stop thinking it's a python path
+                    do_paths = False
+                    continue
+                # ok add the python path
                 if '*' in arg:
                     paths.extend(glob.glob(arg))
                 else:
                     paths.append(arg)
-            elif arg == '--pythonpath':
-                do_paths = True
-            else:
-                do_paths = False
+
         return paths
 
 
