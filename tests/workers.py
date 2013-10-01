@@ -15,6 +15,7 @@ from limpyd_jobs.models import Queue, Job, Error
 from limpyd_jobs.workers import Worker, WorkerConfig
 from limpyd_jobs import STATUSES, LimpydJobsException, ConfigurationException
 from limpyd_jobs.utils import total_seconds
+from limpyd_jobs.version import __version__ as limpyd_jobs_version
 
 from .base import LimpydBaseTest
 
@@ -1013,7 +1014,9 @@ class WorkerConfigArgumentsTests(WorkerConfigBaseTests):
             WorkerConfig(self.mkargs('--help'))
 
     def test_version_argument(self):
-        with self.assertSystemExit(in_stdout='(redis-limpyd-jobs %s)' % limpyd_version):
+        with self.assertSystemExit(
+            in_stdout='(redis-limpyd-jobs %s, redis-limpyd %s)' % (
+                                        limpyd_jobs_version, limpyd_version)):
             WorkerConfig(self.mkargs('--version'))
 
     def test_print_options_arguments(self):
