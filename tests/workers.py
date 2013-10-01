@@ -990,18 +990,24 @@ class WorkerConfigBaseTests(LimpydBaseTest):
         return ['test-script'] + args.split(' ')
 
 
+class QueueModel(Queue):
+    namespace = 'WorkerConfigArgumentsTests'
+
+
+class ErrorModel(Error):
+    namespace = 'WorkerConfigArgumentsTests'
+
+
+class WorkerClass(Worker):
+    pass
+
+
+class WorkerClassWithModels(Worker):
+    queue_model = QueueModel
+    error_model = ErrorModel
+    callback = lambda j, q: None
+
 class WorkerConfigArgumentsTests(WorkerConfigBaseTests):
-    class JobModel(Job):
-        namespace = 'WorkerConfigArgumentsTests'
-
-    class QueueModel(Queue):
-        namespace = 'WorkerConfigArgumentsTests'
-
-    class ErrorModel(Error):
-        namespace = 'WorkerConfigArgumentsTests'
-
-    class WorkerClass(Worker):
-        pass
 
     @staticmethod
     def callback(job, queue):
@@ -1041,22 +1047,30 @@ class WorkerConfigArgumentsTests(WorkerConfigBaseTests):
         self.assertEqual(conf.options.queues, 'foo')
 
     def test_queue_model_argument(self):
-        conf = WorkerConfig(self.mkargs('--queue-model=tests.workers.WorkerConfigArgumentsTests.QueueModel'))
-        self.assertEqual(conf.options.queue_model, self.QueueModel)
+        conf = WorkerConfig(self.mkargs('--queue-model=tests.workers.QueueModel'))
+        self.assertEqual(conf.options.queue_model, QueueModel)
 
         with self.assertSystemExit(in_stderr='Unable to import "queue_model"'):
             WorkerConfig(self.mkargs('--queue-model=foo.bar'))
 
+    def test_queue_model_as_worker_attribute(self):
+        conf = WorkerConfig(self.mkargs('--worker-class=tests.workers.WorkerClassWithModels'))
+        self.assertEqual(conf.options.queue_model, QueueModel)
+
     def test_error_model_argument(self):
-        conf = WorkerConfig(self.mkargs('--error-model=tests.workers.WorkerConfigArgumentsTests.ErrorModel'))
-        self.assertEqual(conf.options.error_model, self.ErrorModel)
+        conf = WorkerConfig(self.mkargs('--error-model=tests.workers.ErrorModel'))
+        self.assertEqual(conf.options.error_model, ErrorModel)
 
         with self.assertSystemExit(in_stderr='Unable to import "error_model"'):
             WorkerConfig(self.mkargs('--error-model=foo.bar'))
 
+    def test_error_model_as_worker_attribute(self):
+        conf = WorkerConfig(self.mkargs('--worker-class=tests.workers.WorkerClassWithModels'))
+        self.assertEqual(conf.options.error_model, ErrorModel)
+
     def test_worker_class_argument(self):
-        conf = WorkerConfig(self.mkargs('--worker-class=tests.workers.WorkerConfigArgumentsTests.WorkerClass'))
-        self.assertEqual(conf.options.worker_class, self.WorkerClass)
+        conf = WorkerConfig(self.mkargs('--worker-class=tests.workers.WorkerClass'))
+        self.assertEqual(conf.options.worker_class, WorkerClass)
 
         with self.assertSystemExit(in_stderr='Unable to import "worker_class"'):
             WorkerConfig(self.mkargs('--worker-class=foo.bar'))
@@ -1070,6 +1084,24 @@ class WorkerConfigArgumentsTests(WorkerConfigBaseTests):
 
         with self.assertSystemExit(in_stderr='The callback is not callable'):
             WorkerConfig(self.mkargs('--callback=tests.workers.WorkerConfigArgumentsTests.not_a_callback'))
+
+    def test_nocallback_defined(self):
+        conf = WorkerConfig(self.mkargs('--worker-class=tests.workers.WorkerClass --queues=foo'))
+        self.assertIsNone(conf.options.callback)
+        conf.prepare_worker()
+        self.assertEqual(conf.worker.callback, conf.worker.execute)
+
+    def test_callback_argument_as_worker_attribute(self):
+        conf = WorkerConfig(self.mkargs('--worker-class=tests.workers.WorkerClassWithModels --queues=foo'))
+        self.assertEqual(conf.options.callback, WorkerClassWithModels.callback)
+        conf.prepare_worker()
+        self.assertEqual(conf.worker.callback, WorkerClassWithModels.callback)
+
+    def test_passing_callback_override_worker_one(self):
+        conf = WorkerConfig(self.mkargs('--worker-class=tests.workers.WorkerClassWithModels --callback=tests.workers.WorkerConfigArgumentsTests.callback --queues=foo'))
+        self.assertEqual(conf.options.callback, self.callback)
+        conf.prepare_worker()
+        self.assertEqual(conf.worker.callback, self.callback)
 
     def test_logger_arguments(self):
         conf = WorkerConfig(self.mkargs('--logger-name=foo --logger-level=debug'))

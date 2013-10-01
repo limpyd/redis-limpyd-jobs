@@ -639,13 +639,6 @@ class WorkerConfig(object):
             help="Do not update the title of the worker's process, e.g. --no-title"),
     )
 
-    default_classes = {
-        'queue_model': Queue,
-        'error_model': Error,
-        'worker_class': Worker,
-        'callback': None,
-    }
-
     def __init__(self, argv=None):
         """
         Save arguments and program name
@@ -733,26 +726,28 @@ class WorkerConfig(object):
 
         self.update_title = self.options.update_title
 
-    def do_import(self, name):
+    def do_import(self, name, default):
         """
         Import the given option (use default values if not defined on command line)
         """
-        option = getattr(self.options, name)
-        if option:
-            klass = import_class(option)
-        else:
-            klass = self.default_classes[name]
-        setattr(self.options, name, klass)
+        try:
+            option = getattr(self.options, name)
+            if option:
+                klass = import_class(option)
+            else:
+                klass = default
+            setattr(self.options, name, klass)
+        except Exception, e:
+            self.parser.error('Unable to import "%s": %s' % (name, e))
 
     def do_imports(self):
         """
         Import all importable options
         """
-        for option in self.default_classes.keys():
-            try:
-                self.do_import(option)
-            except Exception, e:
-                self.parser.error('Unable to import "%s": %s' % (option, e))
+        self.do_import('worker_class', Worker)
+        self.do_import('queue_model', self.options.worker_class.queue_model)
+        self.do_import('error_model', self.options.worker_class.error_model)
+        self.do_import('callback', self.options.worker_class.callback)
 
     def print_options(self):
         """
