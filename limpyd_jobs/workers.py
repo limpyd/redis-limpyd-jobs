@@ -781,7 +781,10 @@ class WorkerConfig(object):
         print "The worker will run with the following options:"
         for name in self.options.worker_class.parameters:
             option = getattr(self.worker, name)
-            if isinstance(option, (list, tuple, set)):
+            if name == 'callback' and \
+                self.options.worker_class.execute == Worker.execute:
+                option = '<jobs "run" method>'
+            elif isinstance(option, (list, tuple, set)):
                 option = ','.join(option)
             print " - %s = %s" % (name.replace('_', '-'), option)
 
