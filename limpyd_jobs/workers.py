@@ -12,6 +12,7 @@ from setproctitle import setproctitle
 from limpyd import __version__ as limpyd_version
 from limpyd.exceptions import DoesNotExist
 
+from limpyd_jobs.version import __version__ as limpyd_jobs_version
 from limpyd_jobs import STATUSES, LimpydJobsException, ConfigurationException
 from limpyd_jobs.models import Queue, Job, Error
 from limpyd_jobs.utils import import_class, total_seconds
@@ -659,7 +660,8 @@ class WorkerConfig(object):
         Return the limpyd_jobs version. May be overriden for subclasses
 
         """
-        return '(redis-limpyd-jobs %s)' % limpyd_version
+        return '(redis-limpyd-jobs %s, redis-limpyd %s)' % (
+                                            limpyd_jobs_version, limpyd_version)
 
     def usage(self):
         """
