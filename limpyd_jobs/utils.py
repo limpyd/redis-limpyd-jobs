@@ -68,9 +68,13 @@ def import_class(class_uri):
 
     try:
         module = import_module(module_uri)
-    except ImportError:
+    except ImportError, e:
         # maybe we are still in a module, test going up one level
-        module = import_class(module_uri)
+        try:
+            module = import_class(module_uri)
+        except Exception:
+            # if failure raise the original exception
+            raise e
 
     return getattr(module, class_name)
 
