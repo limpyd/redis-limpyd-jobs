@@ -1,3 +1,8 @@
+V 0.0.9  2013-10-02
+
+    * Correct bug passing queue_model/error_model/callback to worker script
+    * Tweak logging
+
 V 0.0.8  2013-09-30
 
     * A worker can now manage many queues with jobs from many models
