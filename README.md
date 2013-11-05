@@ -1262,3 +1262,7 @@ The `nosetests` configuration is provided in the `setup.cfg` file and include th
 [redis-limpyd-extensions]: https://github.com/twidi/redis-limpyd-extensions
 [redis]: http://redis.io
 [redis-limpyd]: https://github.com/yohanboniface/redis-limpyd
+
+
+[![Bitdeli Badge](https://d2weczhvl823v0.cloudfront.net/twidi/redis-limpyd-jobs/trend.png)](https://bitdeli.com/free "Bitdeli Badge")
+
