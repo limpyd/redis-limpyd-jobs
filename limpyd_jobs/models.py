@@ -275,7 +275,29 @@ class Job(BaseJobsModel):
         delayed_until = compute_delayed_until(delayed_for, delayed_until)
 
         # create the job or get an existing one
-        job, created = cls.get_or_connect(identifier=identifier, status=STATUSES.WAITING)
+        job_kwargs = {'identifier': identifier, 'status': STATUSES.WAITING}
+        retries = 0
+        while retries < 10:
+            retries += 1
+            try:
+                job, created = cls.get_or_connect(**job_kwargs)
+            except IndexError:
+                # Failure during the retrieval https://friendpaste.com/5U63a8aFuV44SEgQckgMP
+                # => retry
+                continue
+            except ValueError:
+                # more than one already in the queue !
+                try:
+                    job = cls.collection(job_kwargs)[0]
+                except IndexError:
+                    # but no more now ?!
+                    # => retry
+                    continue
+                else:
+                    created = False
+
+            # ok we have our job, stop now
+            break
 
         # check queue_name
         queue_name = cls._get_queue_name(queue_name)
