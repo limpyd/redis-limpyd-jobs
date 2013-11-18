@@ -35,7 +35,7 @@ setup(
     keywords = "redis, jobs",
     url = infos['__homepage__'],
     download_url = "https://github.com/twidi/redis-limpyd-jobs/tags",
-    packages = ['limpyd_jobs'],
+    packages = ['limpyd_jobs', 'limpyd_jobs.scripts'],
     include_package_data=True,
     install_requires=["redis-limpyd", "redis-limpyd-extensions", "python-dateutil", "setproctitle"],
     license = "DO WHAT THE FUCK YOU WANT TO PUBLIC LICENSE",
