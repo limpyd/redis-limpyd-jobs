@@ -215,6 +215,7 @@ class Job(BaseJobsModel):
     end = fields.InstanceHashField()
     tries = fields.InstanceHashField()
     delayed_until = fields.InstanceHashField()
+    queued = fields.InstanceHashField(indexable=True)  # '1' if queued
 
     queue_model = Queue
     queue_name = None
@@ -275,7 +276,7 @@ class Job(BaseJobsModel):
         delayed_until = compute_delayed_until(delayed_for, delayed_until)
 
         # create the job or get an existing one
-        job_kwargs = {'identifier': identifier, 'status': STATUSES.WAITING}
+        job_kwargs = {'identifier': identifier, 'queued': '1'}
         retries = 0
         while retries < 10:
             retries += 1
@@ -320,8 +321,8 @@ class Job(BaseJobsModel):
             current_queue = queue_model.get_queue(queue_name, current_priority)
             current_queue.waiting.lrem(0, job.ident)
 
-        elif fields_if_new:
-            job.set_fields(added=str(datetime.utcnow()), **fields_if_new)
+        else:
+            job.set_fields(added=str(datetime.utcnow()), **(fields_if_new or {}))
 
         # add the job to the queue
         job.enqueue_or_delay(queue_name, priority, delayed_until, prepend, queue_model)
@@ -376,7 +377,7 @@ class Job(BaseJobsModel):
         """
         queue_name = self._get_queue_name(queue_name)
 
-        fields = {}
+        fields = {'queued': '1'}
 
         if priority is not None:
             fields['priority'] = priority

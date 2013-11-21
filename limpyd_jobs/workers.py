@@ -438,6 +438,11 @@ class Worker(object):
         """
         Called when an exception was raised during the execute call for a job.
         """
+        to_be_requeued = self.requeue_times and self.requeue_times >= int(job.tries.hget() or 0)
+
+        if not to_be_requeued:
+            job.queued.delete()
+
         job.hmset(end=str(datetime.utcnow()), status=STATUSES.ERROR)
         queue.errors.rpush(job.ident)
 
@@ -455,7 +460,7 @@ class Worker(object):
             job.on_error(queue, exception, trace)
 
         # requeue the job if needed
-        if self.requeue_times and self.requeue_times >= int(job.tries.hget() or 0):
+        if to_be_requeued:
             priority = queue.priority.hget()
 
             if self.requeue_priority_delta:
@@ -504,6 +509,7 @@ class Worker(object):
         Called just after an execute call was successful.
         job_result is the value returned by the callback, if any.
         """
+        job.queued.delete()
         job.hmset(end=str(datetime.utcnow()), status=STATUSES.SUCCESS)
         queue.success.rpush(job.ident)
         self.log(self.job_success_message(job, queue, job_result))
@@ -537,6 +543,7 @@ class Worker(object):
         """
         Called if a job can't be run: canceled, already running or done.
         """
+        job.queued.delete()
         self.log(self.job_skipped_message(job, queue), level='warning')
         if hasattr(job, 'on_skipped'):
             job.on_skipped(queue)

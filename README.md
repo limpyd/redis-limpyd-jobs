@@ -172,6 +172,11 @@ It can be set when calling `add_job` by passing either a `delayed_until` argumen
 
 If a job is in error after its execution and if the worker has a positive `requeue_delay_delta` attribute, the `delayed_until` field will be set accordingly, useful to retry a erroneous job after a certain delay.
 
+##### `queued`
+
+This field is set to `'1'` when it's currently managed by a queue: waiting, delayed, running. This flag is set when calling `enqueue_or_delay`, and removed by the worker when the job is canceled, is finished with success, or finished with error and not requeued.
+It's this field that is checked to test if the same job already exists when `add_job` is called.
+
 #### Job attributes
 
 ##### `queue_model`
@@ -231,6 +236,8 @@ Arguments:
 ##### `enqueue_or_delay` (method)
 
 It's the method, called in `add_job` and `requeue` that will either put the job in the waiting or delayed queue, depending of `delayed_until`. If this argument is defined and in the future, the job is delayed, else it's simply queued.
+
+This method also set the `queued` flag of the job to `'1'`.
 
 Arguments:
 
@@ -303,7 +310,7 @@ This method, if defined on your job model (it's not there by default, ie "ghost"
 
 ##### `add_job`
 
-The `add_job` class method is the main (and recommended) way to create a job. It will check if a job with the same identifier already exists in a waiting queue and if one is found, update its priority (and move it in the correct queue). If no existing job is found, a new one will be created and added to a queue.
+The `add_job` class method is the main (and recommended) way to create a job. It will check if a job with the same identifier already exists in a queue (not finished) and if one is found, update its priority (and move it in the correct queue). If no existing job is found, a new one will be created and added to a queue.
 
 Arguments:
 
@@ -924,7 +931,7 @@ Returns nothing.
 
 When a job is fetched in the `run` method, its status is checked. If it's not `STATUSES.WAITING`, this `job_skipped` method is called, with two main arguments: the job and the queue in which it was found.
 
-This method logs the message returned by the `job_skipped_message` method, then call, if defined, the `on_skipped` method of the job.
+This method remove the `queued` flag of the job, logs the message returned by the `job_skipped_message` method, then call, if defined, the `on_skipped` method of the job.
 
 ##### `job_skipped_message`
 
@@ -969,7 +976,7 @@ Returns nothing.
 
 When the callback (or the `execute` method) is finished, without having raised any exception, the job is considered successful, and the `job_success` method is called, with the job and the queue in which it was found, and the return value of the callback method.
 
-This method updates the `end` and `status` fields of the job, moves the job into the `success` list of the queue, then log the message returned by `job_success_message` and finally call, if defined, the `on_success` method of the job.
+This method remove the `queued` flag of the job,  updates its `end` and `status` fields, moves the job into the `success` list of the queue, then log the message returned by `job_success_message` and finally call, if defined, the `on_success` method of the job.
 
 ##### `job_success_message`
 
@@ -991,7 +998,7 @@ Returns nothing.
 
 When the callback (or the `execute` method) is terminated by raising an exception, the `job_error` method is called, with the job and the queue in which it was found, and the raised exception and, if `save_tracebacks` is `True`, the traceback.
 
-This method updates the `end` and `status` fields of the job, moves the job into the `error` list of the queue, adds a new error object (if `save_errors` is `True`), then log the message returned by `job_error_message` and call the `on_error` method of the job is called, if defined.
+This method remove the `queued` flag of the job if it is no to be requeued,  updates its `end` and `status` fields, moves the job into the `error` list of the queue, adds a new error object (if `save_errors` is `True`), then log the message returned by `job_error_message` and call the `on_error` method of the job is called, if defined.
 
 And finally, if the `requeue_times` argument allows it (considering the `tries` attribute of the job, too), the `requeue_job` method is called.
 
