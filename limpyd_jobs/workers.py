@@ -356,10 +356,14 @@ class Worker(object):
         """
         Requeue each delayed job that are now ready to be executed
         """
+        failures = []
         for queue in self.queue_model.get_all_by_priority(self.queues):
-            queue.requeue_delayed_jobs()
+            failures.extend(queue.requeue_delayed_jobs())
 
         self.last_requeue_delayed = datetime.utcnow()
+
+        for failure in failures:
+            self.log('Unable to requeue %s: %s' % failure)
 
     def _main_loop(self):
         """

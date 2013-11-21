@@ -153,6 +153,7 @@ class Queue(BaseJobsModel):
     def requeue_delayed_jobs(self):
         """
         Put all delayed jobs that are now ready, back in the queue waiting list
+        Return a list of failures
         """
         lock_key = self.make_key(
             self._name,
@@ -163,14 +164,14 @@ class Queue(BaseJobsModel):
 
         if connection.exists(lock_key):
             # if locked, a worker is already on it, don't wait and exit
-            return
+            return []
 
         with Lock(connection, lock_key, timeout=60):
 
             # stop here if we know we have nothing
             first_delayed_time = self.first_delayed_time
             if not first_delayed_time:
-                return None
+                return []
 
             # get when we are :)
             now_timestamp = datetime_to_score(datetime.utcnow())
@@ -178,8 +179,9 @@ class Queue(BaseJobsModel):
             # the first job will be ready later, and so the other ones too, then
             # abort
             if float(first_delayed_time) > now_timestamp:
-                return None
+                return []
 
+            failures = []
             while True:
                 # get the first entry
                 first_entry = self.first_delayed
@@ -201,9 +203,14 @@ class Queue(BaseJobsModel):
                 self.delayed.zrem(job_ident)
 
                 # and add it to the waiting queue
-                job = Job.get_from_ident(job_ident)
-                job.status.hset(STATUSES.WAITING)
-                self.enqueue_job(job)
+                try:
+                    job = Job.get_from_ident(job_ident)
+                    job.status.hset(STATUSES.WAITING)
+                    self.enqueue_job(job)
+                except Exception, e:
+                    failures.append((job_ident, '%s' % e))
+
+            return failures
 
 
 class Job(BaseJobsModel):
