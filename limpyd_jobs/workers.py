@@ -490,8 +490,10 @@ class Worker(object):
         """
         Return the message to log when a job raised an error
         """
-        return '[%s|%s] error: %s' % (queue._cached_name,
-                                      job._cached_identifier, str(exception))
+        return '[%s|%s|%s] error: %s' % (queue._cached_name,
+                                         job.pk.get(),
+                                         job._cached_identifier,
+                                         str(exception))
 
     def job_requeue_message(self, job, queue):
         """
@@ -499,8 +501,8 @@ class Worker(object):
         """
         priority, delayed_until = job.hmget('priority', 'delayed_until')
 
-        msg = '[%s|%s] requeued with priority %s'
-        args = [queue._cached_name, job._cached_identifier, priority]
+        msg = '[%s|%s|%s] requeued with priority %s'
+        args = [queue._cached_name, job.pk.get(), job._cached_identifier, priority]
 
         if delayed_until:
             msg += ', delayed until %s'
@@ -524,7 +526,7 @@ class Worker(object):
         """
         Return the message to log when a job is successful
         """
-        return '[%s|%s] success, in %s' % (queue._cached_name,
+        return '[%s|%s|%s] success, in %s' % (queue._cached_name, job.pk.get(),
                                            job._cached_identifier, job.duration)
 
     def job_started(self, job, queue):
@@ -541,7 +543,8 @@ class Worker(object):
         """
         Return the message to log just befre the execution of the job
         """
-        return '[%s|%s] starting' % (queue._cached_name, job._cached_identifier)
+        return '[%s|%s|%s] starting' % (queue._cached_name, job.pk.get(),
+                                        job._cached_identifier)
 
     def job_skipped(self, job, queue):
         """
@@ -557,8 +560,9 @@ class Worker(object):
         Return the message to log when a job can't be run: canceled, already
         running or done
         """
-        return '[%s|%s] job skipped (current status: %s)' % (
+        return '[%s|%s|%s] job skipped (current status: %s)' % (
                 queue._cached_name,
+                job.pk.get(),
                 job._cached_identifier,
                 STATUSES.by_value(job._cached_status, 'UNKNOWN'))
 
