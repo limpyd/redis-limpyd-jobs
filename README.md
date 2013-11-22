@@ -434,6 +434,8 @@ Arguments:
 
 This method will check for all jobs in the delayed queue that are now ready to be executed and put them back in the waiting list.
 
+This method will return the list of failures, each failure being a tuple with the value returned by the `ident` property of a job, and the message of the raised exception causing the failure.
+
 #### Queue class methods
 
 ##### `get_queue`
