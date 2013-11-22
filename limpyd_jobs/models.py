@@ -307,34 +307,38 @@ class Job(BaseJobsModel):
             # ok we have our job, stop now
             break
 
-        # check queue_name
-        queue_name = cls._get_queue_name(queue_name)
+        try:
+            # check queue_name
+            queue_name = cls._get_queue_name(queue_name)
 
-        # if the job already exists, and we want a higher priority or move it,
-        # start by updating it
-        if not created:
-            current_priority = int(job.priority.hget() or 0)
-            # if the job has a higher priority, or don't need to be moved,
-            # don't move it
-            if not prepend and current_priority >= priority:
-                return job
+            # if the job already exists, and we want a higher priority or move it,
+            # start by updating it
+            if not created:
+                current_priority = int(job.priority.hget() or 0)
+                # if the job has a higher priority, or don't need to be moved,
+                # don't move it
+                if not prepend and current_priority >= priority:
+                    return job
 
-            # cancel it temporarily, we'll set it as waiting later
-            job.status.hset(STATUSES.CANCELED)
+                # cancel it temporarily, we'll set it as waiting later
+                job.status.hset(STATUSES.CANCELED)
 
-            # remove it from the current queue, we'll add it to the new one later
-            if queue_model is None:
-                queue_model = cls.queue_model
-            current_queue = queue_model.get_queue(queue_name, current_priority)
-            current_queue.waiting.lrem(0, job.ident)
+                # remove it from the current queue, we'll add it to the new one later
+                if queue_model is None:
+                    queue_model = cls.queue_model
+                current_queue = queue_model.get_queue(queue_name, current_priority)
+                current_queue.waiting.lrem(0, job.ident)
 
-        else:
-            job.set_fields(added=str(datetime.utcnow()), **(fields_if_new or {}))
+            else:
+                job.set_fields(added=str(datetime.utcnow()), **(fields_if_new or {}))
 
-        # add the job to the queue
-        job.enqueue_or_delay(queue_name, priority, delayed_until, prepend, queue_model)
+            # add the job to the queue
+            job.enqueue_or_delay(queue_name, priority, delayed_until, prepend, queue_model)
 
-        return job
+            return job
+        except Exception:
+            job.queued.delete()
+            raise
 
     def run(self, queue):
         """
