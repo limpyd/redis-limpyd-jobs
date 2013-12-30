@@ -296,7 +296,7 @@ class Job(BaseJobsModel):
             except ValueError:
                 # more than one already in the queue !
                 try:
-                    job = cls.collection(job_kwargs)[0]
+                    job = cls.collection(**job_kwargs).instances()[0]
                 except IndexError:
                     # but no more now ?!
                     # => retry

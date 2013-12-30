@@ -1,3 +1,7 @@
+V 0.0.13  2013-12-30
+
+    * Correct a bug when add_job try to manage duplicate jobs
+
 V 0.0.12  2013-11-22
 
     * Manage failures when a worker is requeuing delayed jobs
