@@ -1,3 +1,7 @@
+V 0.0.14  2014-01-02
+
+    * Manage consequences of race condition in get_queue
+
 V 0.0.13  2013-12-30
 
     * Correct a bug when add_job try to manage duplicate jobs

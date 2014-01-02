@@ -47,10 +47,30 @@ class Queue(BaseJobsModel):
         If the queue is created, fields in fields_if_new will be set for the new
         queue.
         """
-        queue, created = cls.get_or_connect(
-            name=name,
-            priority=priority,
-        )
+        queue_kwargs = {'name': name, 'priority': priority}
+        retries = 0
+        while retries < 10:
+            retries += 1
+            try:
+                queue, created = cls.get_or_connect(**queue_kwargs)
+            except IndexError:
+                # Failure during the retrieval https://friendpaste.com/5U63a8aFuV44SEgQckgMP
+                # => retry
+                continue
+            except ValueError:
+                # more than one (race condition https://github.com/yohanboniface/redis-limpyd/issues/82 ?)
+                try:
+                    queue = cls.collection(**queue_kwargs).instances()[0]
+                except IndexError:
+                    # but no more now ?!
+                    # => retry
+                    continue
+                else:
+                    created = False
+
+            # ok we have our queue, stop now
+            break
+
         if created and fields_if_new:
             queue.set_fields(**fields_if_new)
 
