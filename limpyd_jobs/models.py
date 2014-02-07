@@ -514,6 +514,13 @@ class Error(BaseJobsModel):
 
         return error
 
+    @classmethod
+    def collection_for_job(cls, job):
+        """
+        Helper to return a collection of errors for the given job
+        """
+        return cls.collection(job_model_repr=job.get_model_repr(), identifier=getattr(job, '_cached_identifier', job.identifier.hget()))
+
     @property
     def datetime(self):
         """

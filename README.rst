@@ -837,6 +837,22 @@ If you use a subclass of the ``Error`` model, you can pass additional
 arguments to the ``add_error`` method simply by passing them as named
 arguments, they will be save in the object to be created.
 
+
+``collection_for_job``
+''''''''''''''''''''''
+
+The ``collection_for_job`` is a helper to retrieve the errors assiated with
+a given job, more precisely for all the instances of this job with the same
+identifier.
+
+The result is a `limpyd` collection, to you can use ``filter``, ``instances``...
+on it.
+
+Arguments:
+
+-  ``job`` The job for which we want errors
+
+
 The worker(s)
 -------------
 
