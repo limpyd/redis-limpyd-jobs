@@ -1,3 +1,8 @@
+V 0.0.15  2014-02-07
+
+    * Ability to cancel a delayed job
+    * Helper to retrieve errors assiociated to a job
+
 V 0.0.14  2014-01-02
 
     * Manage consequences of race condition in get_queue
