@@ -436,6 +436,8 @@ This method will check for all jobs in the delayed queue that are now ready to b
 
 This method will return the list of failures, each failure being a tuple with the value returned by the `ident` property of a job, and the message of the raised exception causing the failure.
 
+Not that the status of the jobs is changed only if their status was `STATUSES.DELAYED`. It allows to cancel a delayed job before.
+
 #### Queue class methods
 
 ##### `get_queue`

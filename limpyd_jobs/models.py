@@ -225,7 +225,8 @@ class Queue(BaseJobsModel):
                 # and add it to the waiting queue
                 try:
                     job = Job.get_from_ident(job_ident)
-                    job.status.hset(STATUSES.WAITING)
+                    if job.status.hget() == STATUSES.DELAYED:
+                        job.status.hset(STATUSES.WAITING)
                     self.enqueue_job(job)
                 except Exception, e:
                     failures.append((job_ident, '%s' % e))
