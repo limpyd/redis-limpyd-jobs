@@ -15,7 +15,7 @@ def get_delta(value):
     or a number of seconds (int or float).
     Raise an exception in all other cases.
     """
-    if isinstance(value, (int, float)):
+    if isinstance(value, (int, long, float)):
         return timedelta(seconds=value)
     elif isinstance(value, timedelta):
         return value

@@ -1,3 +1,7 @@
+V 0.0.16  2014-02-17
+
+    * `delayed_for` can be a long too (not only int, float or timedelta)
+
 V 0.0.15  2014-02-07
 
     * Ability to cancel a delayed job
