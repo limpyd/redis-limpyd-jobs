@@ -319,6 +319,10 @@ class TestJobDelaying(Job):
         self.foo.hset('shouldnothappen')
 
 
+class TestNoRequeableJob(Job):
+    always_cancel_on_error = True
+
+
 class WorkerRunTests(LimpydBaseTest):
 
     def tests_worker_should_handle_many_priorities(self):
@@ -595,7 +599,7 @@ class WorkerRunTests(LimpydBaseTest):
         attended_foo = 'Error on queue %s for job %s' % (queue.pk.get(), job.ident)
         self.assertEqual(error.foo.hget(), attended_foo)
 
-    def test_job_in_error_could_be_requeue(self):
+    def test_job_in_error_could_be_requeued(self):
         class TestWorker(Worker):
             def job_error(self, job, queue, exception, trace=None):
                 super(TestWorker, self).job_error(job, queue, exception, trace)
@@ -636,6 +640,30 @@ class WorkerRunTests(LimpydBaseTest):
         queue = Queue.get_queue(name='test', priority=-2)  # priority decreased 2 times
         self.assertEqual(queue.waiting.llen(), 0)
         self.assertEqual(queue.delayed.zcard(), 0)
+
+    def test_job_in_error_should_not_be_requeue_if_always_cancel_on_error_is_true(self):
+        job = TestNoRequeableJob.add_job(identifier='job:1', queue_name='test')
+        queue = Queue.get_queue(name='test')
+        worker = Worker('test', max_loops=1, requeue_times=2, timeout=1,
+                        fetch_priorities_delay=1, fetch_delayed_delay=1,
+                        requeue_delay_delta=1)  # no callback
+        worker.run()
+
+        self.assertEqual(job.tries.hget(), "1")
+        self.assertEqual(job.status.hget(), STATUSES.ERROR)
+        self.assertEqual(queue.waiting.llen(), 0)
+
+    def test_job_in_error_should_not_be_requeue_if_cancel_on_error_is_true(self):
+        job = Job.add_job(identifier='job:1', queue_name='test', cancel_on_error=1)
+        queue = Queue.get_queue(name='test')
+        worker = Worker('test', max_loops=1, requeue_times=2, timeout=1,
+                        fetch_priorities_delay=1, fetch_delayed_delay=1,
+                        requeue_delay_delta=1)  # no callback
+        worker.run()
+
+        self.assertEqual(job.tries.hget(), "1")
+        self.assertEqual(job.status.hget(), STATUSES.ERROR)
+        self.assertEqual(queue.waiting.llen(), 0)
 
     def test_run_ended_method_should_be_called(self):
         class TestWorker(Worker):

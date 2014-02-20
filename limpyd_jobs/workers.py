@@ -451,7 +451,7 @@ class Worker(object):
         """
         Called when an exception was raised during the execute call for a job.
         """
-        to_be_requeued = self.requeue_times and self.requeue_times >= int(job.tries.hget() or 0)
+        to_be_requeued = not job.must_be_cancelled_on_error and self.requeue_times and self.requeue_times >= int(job.tries.hget() or 0)
 
         if not to_be_requeued:
             job.queued.delete()
@@ -467,7 +467,7 @@ class Worker(object):
                                        trace=trace,
                                        **additional_fields)
 
-        self.log(self.job_error_message(job, queue, exception, trace), level='error')
+        self.log(self.job_error_message(job, queue, to_be_requeued, exception, trace), level='error')
 
         if hasattr(job, 'on_error'):
             job.on_error(queue, exception, trace)
@@ -495,14 +495,15 @@ class Worker(object):
 
         self.log(self.job_requeue_message(job, queue))
 
-    def job_error_message(self, job, queue, exception, trace=None):
+    def job_error_message(self, job, queue, to_be_requeued, exception, trace=None):
         """
         Return the message to log when a job raised an error
         """
-        return '[%s|%s|%s] error: %s' % (queue._cached_name,
-                                         job.pk.get(),
-                                         job._cached_identifier,
-                                         str(exception))
+        return '[%s|%s|%s] error: %s [%s]' % (queue._cached_name,
+                             job.pk.get(),
+                             job._cached_identifier,
+                             str(exception),
+                             'requeued' if to_be_requeued else 'NOT requeued')
 
     def job_requeue_message(self, job, queue):
         """

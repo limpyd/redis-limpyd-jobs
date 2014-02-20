@@ -244,6 +244,9 @@ class Job(BaseJobsModel):
     tries = fields.InstanceHashField()
     delayed_until = fields.InstanceHashField()
     queued = fields.InstanceHashField(indexable=True)  # '1' if queued
+    cancel_on_error = fields.InstanceHashField()
+
+    always_cancel_on_error = False
 
     queue_model = Queue
     queue_name = None
@@ -369,6 +372,14 @@ class Job(BaseJobsModel):
         job_success method of the worker.
         """
         raise NotImplementedError('You must implement your own action')
+
+    @property
+    def must_be_cancelled_on_error(self):
+        """
+        Return True if either the "always_cancel_on_error" attribute is True,
+        of if the "cancel_on_error" field holds a True value
+        """
+        return self.always_cancel_on_error or self.cancel_on_error.hget()
 
     @property
     def duration(self):

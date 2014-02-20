@@ -177,6 +177,12 @@ If a job is in error after its execution and if the worker has a positive `reque
 This field is set to `'1'` when it's currently managed by a queue: waiting, delayed, running. This flag is set when calling `enqueue_or_delay`, and removed by the worker when the job is canceled, is finished with success, or finished with error and not requeued.
 It's this field that is checked to test if the same job already exists when `add_job` is called.
 
+##### `cancel_on_error`
+
+You must be set this field to a `True` value (don't forget that Redis stores Strings, so `0` will be saved as `"0"` so it will be `True`... so don't set it to `False` or `0` if you want a `False` value: yo can let it empty) if you don't want the job to be requeued in case of error.
+
+Note that if you want to do this for all jobs a a class, you may want to set to `True` the `always_cancel_on_error` attribute of this class.
+
 #### Job attributes
 
 ##### `queue_model`
@@ -189,11 +195,24 @@ When adding jobs via the `add_job` method, the model defined in this attribute w
 
 Note that if you don't subclass the `Job` model, you can pass the `queue_model` argument to the `add_job` method.
 
+##### `always_cancel_on_error`
+
+Set this attribute to True if you want all your jobs of this class not be be requeued in case of error. If you let it to its default  value of `False`, you can still do it job by job by setting their field `cancel_on_error` to a `True` value.
+
 #### Job properties and methods
 
 ##### `ident` (property)
 
 The `ident` property is a string representation of the model + the primary key of the job, saved in queues, allowing the retrieval of the Job.
+
+##### `must_be_cancelled_on_error` (property)
+
+The `must_be_cancelled_on_error` property returns a Boolean indicating if, in case of error during its execution, the job must NOT be requeued.
+
+By default it will be `False`, but there is to way to change this behavior:
+
+- setting the `always_cancel_on_error` of your job's class to `True`.
+- setting the `cancel_on_error` field of your job to a `True` value
 
 ##### `duration` (property)
 
@@ -1056,14 +1075,14 @@ When the callback (or the `execute` method) is terminated by raising an exceptio
 
 This method remove the `queued` flag of the job if it is no to be requeued,  updates its `end` and `status` fields, moves the job into the `error` list of the queue, adds a new error object (if `save_errors` is `True`), then log the message returned by `job_error_message` and call the `on_error` method of the job is called, if defined.
 
-And finally, if the `requeue_times` argument allows it (considering the `tries` attribute of the job, too), the `requeue_job` method is called.
+And finally, if the `must_be_cancelled_on_error` property of the job is False, and the `requeue_times` worker attribute allows it (considering the `tries` attribute of the job, too), the `requeue_job` method is called.
 
 ##### `job_error_message`
 
 Signature:
 
 ```python
-def job_error_message(self, job, queue, exception, trace=None):
+def job_error_message(self, job, queue, to_be_requeued_exception, trace=None):
 ```
 Returns a string to be logged in `job_error`.
 
