@@ -1,3 +1,9 @@
+V 0.0.17  2014-02-20
+
+    * Ability to delay a job before its execution
+    * Ability to cancel or delay of job during its execution
+    * Ability to cancel the requeuing of jobs in error
+
 V 0.0.16  2014-02-17
 
     * `delayed_for` can be a long too (not only int, float or timedelta)
