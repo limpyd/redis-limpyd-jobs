@@ -5,6 +5,7 @@ import threading
 import traceback
 import os.path
 from datetime import datetime, timedelta
+from dateutil.parser import parse
 from time import sleep
 from optparse import make_option, OptionParser
 
@@ -16,7 +17,7 @@ from limpyd.exceptions import DoesNotExist
 from limpyd_jobs.version import __version__ as limpyd_jobs_version
 from limpyd_jobs import STATUSES, LimpydJobsException, ConfigurationException
 from limpyd_jobs.models import Queue, Job, Error
-from limpyd_jobs.utils import import_class, total_seconds
+from limpyd_jobs.utils import import_class, total_seconds, compute_delayed_until
 
 LOGGER_NAME = 'limpyd-jobs'
 logger = logging.getLogger(LOGGER_NAME)
@@ -415,7 +416,13 @@ class Worker(object):
                                 trace = traceback.format_exc()
                             self.job_error(job, queue, e, trace)
                         else:
-                            self.job_success(job, queue, job_result)
+                            job._cached_status = job.status.hget()
+                            if job._cached_status == STATUSES.DELAYED:
+                                self.job_delayed(job, queue)
+                            elif job._cached_status == STATUSES.CANCELED:
+                                self.job_skipped(job, queue)
+                            else:
+                                self.job_success(job, queue, job_result)
                 except Exception, e:
                     self.log('[%s] unexpected error: %s' % (identifier, str(e)),
                                                                  level='error')
@@ -548,7 +555,8 @@ class Worker(object):
 
     def job_skipped(self, job, queue):
         """
-        Called if a job can't be run: canceled, already running or done.
+        Called if a job, before trying to run it, has not the "waiting" status,
+        or, after run, if its status was set to "canceled"
         """
         job.queued.delete()
         self.log(self.job_skipped_message(job, queue), level='warning')
@@ -557,14 +565,52 @@ class Worker(object):
 
     def job_skipped_message(self, job, queue):
         """
-        Return the message to log when a job can't be run: canceled, already
-        running or done
+        Return the message to log when a job was skipped
         """
         return '[%s|%s|%s] job skipped (current status: %s)' % (
                 queue._cached_name,
                 job.pk.get(),
                 job._cached_identifier,
                 STATUSES.by_value(job._cached_status, 'UNKNOWN'))
+
+    def job_delayed(self, job, queue):
+        """
+        Called if a job, before trying to run it, has the "delayed" status, or,
+        after run, if its status was set to "delayed"
+        If delayed_until was not set, or is invalid, set it to 60sec in the future
+        """
+        delayed_until = job.delayed_until.hget()
+        if delayed_until:
+            try:
+                delayed_until = compute_delayed_until(delayed_until=parse(delayed_until))
+            except (ValueError, TypeError):
+                delayed_until = None
+
+        if not delayed_until:
+            # by default delay it for 60 seconds
+            delayed_until = compute_delayed_until(delayed_for=60)
+
+        job.enqueue_or_delay(
+            queue_name=queue._cached_name,
+            delayed_until=delayed_until,
+            queue_model=queue.__class__,
+        )
+
+        self.log(self.job_delayed_message(job, queue), level='warning')
+
+        if hasattr(job, 'on_delayed'):
+            job.on_delayed(queue)
+
+    def job_delayed_message(self, job, queue):
+        """
+        Return the message to log when a job was delayed just before or during
+        its execution
+        """
+        return '[%s|%s|%s] job delayed until %s' % (
+                queue._cached_name,
+                job.pk.get(),
+                job._cached_identifier,
+                job.delayed_until.hget())
 
 
 class WorkerConfig(object):

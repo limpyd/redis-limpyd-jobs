@@ -6,6 +6,7 @@ import sys
 from StringIO import StringIO
 from setproctitle import getproctitle
 from datetime import datetime, timedelta
+from dateutil.parser import parse
 
 from limpyd import __version__ as limpyd_version, fields
 from limpyd.contrib.database import PipelineDatabase
@@ -285,6 +286,37 @@ class TestJobOnRequeued(Job):
 
     def on_requeued(self, queue):
         self.foo.hset('bar')
+
+
+class TestJobCancellation(Job):
+    foo = fields.InstanceHashField()
+
+    def run(self, queue):
+        self.status.hset(STATUSES.CANCELED)
+
+    def on_skipped(self, queue):
+        self.foo.hset('bar')
+
+    def on_success(self, queue):
+        self.foo.hset('shouldnothappen')
+
+
+class TestJobDelaying(Job):
+    foo = fields.InstanceHashField()
+    delay_until = fields.InstanceHashField()
+
+    def run(self, queue):
+        self.status.hset(STATUSES.DELAYED)
+
+        delay_until = self.delay_until.hget()
+        if delay_until:
+            self.delayed_until.hset(delay_until)
+
+    def on_delayed(self, queue):
+        self.foo.hset('bar')
+
+    def on_success(self, queue):
+        self.foo.hset('shouldnothappen')
 
 
 class WorkerRunTests(LimpydBaseTest):
@@ -651,7 +683,7 @@ class WorkerRunTests(LimpydBaseTest):
         with self.assertRaises(LimpydJobsException):
             worker.run()
 
-    def test_job_skipped_method_should_be_called(self):
+    def test_job_skipped_method_should_be_called_if_job_not_in_waiting_status(self):
         class TestWorker(Worker):
             passed = False
 
@@ -887,6 +919,97 @@ class WorkerRunTests(LimpydBaseTest):
         self.assertEqual(queue.waiting.llen(), 0)
         self.assertEqual(queue.success.llen(), 1)
         self.assertEqual(queue.errors.llen(), 0)
+
+    def test_cancelling_a_job_during_execution_should_skip_it(self):
+
+        job = TestJobCancellation.add_job(identifier='job:1', queue_name='test')
+        worker = Worker('test', max_loops=1)
+        worker.run()
+
+        self.assertEqual(job.status.hget(), STATUSES.CANCELED)
+        self.assertEqual(job.queued.hget(), None)
+        # job_skipped must have been called
+        self.assertEqual(job.foo.hget(), 'bar')
+
+        queue = Queue.get_queue('test')
+        self.assertEqual(queue.waiting.llen(), 0)
+        self.assertEqual(queue.success.llen(), 0)
+        self.assertEqual(queue.errors.llen(), 0)
+        self.assertEqual(queue.delayed.zcard(), 0)
+
+    def test_delaying_a_job_during_execution_with_forced_delay_should_delay(self):
+        delay_until = str(datetime.utcnow() + timedelta(seconds=500))
+
+        job = TestJobDelaying.add_job(identifier='job:1', queue_name='test', delay_until=delay_until)
+        worker = Worker('test', max_loops=1)
+        worker.run()
+
+        self.assertEqual(job.status.hget(), STATUSES.DELAYED)
+        self.assertEqual(job.queued.hget(), '1')
+
+        self.assertEqual(job.delayed_until.hget(), delay_until)
+
+        # job_delayed must have been called
+        self.assertEqual(job.foo.hget(), 'bar')
+
+        queue = Queue.get_queue('test')
+
+        # must be in delayed part of the queue
+        self.assertEqual(queue.waiting.llen(), 0)
+        self.assertEqual(queue.success.llen(), 0)
+        self.assertEqual(queue.errors.llen(), 0)
+        self.assertEqual(queue.delayed.zcard(), 1)
+        self.assertEqual(queue.delayed.zmembers(), [job.ident])
+
+    def test_delaying_a_job_during_execution_without_forced_delay_should_delay_it_for_60sec(self):
+
+        job = TestJobDelaying.add_job(identifier='job:1', queue_name='test')
+        worker = Worker('test', max_loops=1)
+        worker.run()
+
+        self.assertEqual(job.status.hget(), STATUSES.DELAYED)
+        self.assertEqual(job.queued.hget(), '1')
+
+        delayed_until = parse(job.delayed_until.hget())
+        delayed_until_expected = datetime.utcnow() + timedelta(seconds=60)
+        self.assertTrue((delayed_until_expected - delayed_until).total_seconds() < 0.5)
+
+        # job_delayed must have been called
+        self.assertEqual(job.foo.hget(), 'bar')
+
+        queue = Queue.get_queue('test')
+
+        # must be in delayed part of the queue
+        self.assertEqual(queue.waiting.llen(), 0)
+        self.assertEqual(queue.success.llen(), 0)
+        self.assertEqual(queue.errors.llen(), 0)
+        self.assertEqual(queue.delayed.zcard(), 1)
+        self.assertEqual(queue.delayed.zmembers(), [job.ident])
+
+    def test_delaying_a_job_during_execution_with_invaild_delay_should_delay_it_for_60sec(self):
+
+        job = TestJobDelaying.add_job(identifier='job:1', queue_name='test', delay_until="foo")
+        worker = Worker('test', max_loops=1)
+        worker.run()
+
+        self.assertEqual(job.status.hget(), STATUSES.DELAYED)
+        self.assertEqual(job.queued.hget(), '1')
+
+        delayed_until = parse(job.delayed_until.hget())
+        delayed_until_expected = datetime.utcnow() + timedelta(seconds=60)
+        self.assertTrue((delayed_until_expected - delayed_until).total_seconds() < 0.5)
+
+        # job_delayed must have been called
+        self.assertEqual(job.foo.hget(), 'bar')
+
+        queue = Queue.get_queue('test')
+
+        # must be in delayed part of the queue
+        self.assertEqual(queue.waiting.llen(), 0)
+        self.assertEqual(queue.success.llen(), 0)
+        self.assertEqual(queue.errors.llen(), 0)
+        self.assertEqual(queue.delayed.zcard(), 1)
+        self.assertEqual(queue.delayed.zmembers(), [job.ident])
 
     def test_job_on_success_is_called_if_defined(self):
 

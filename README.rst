@@ -421,7 +421,9 @@ Arguments:
 
 This method, if defined on your job model (it's not there by default, ie
 "ghost") is called when the job, just fetched by the worker, could not
-be executed because of its status, not "waiting".
+be executed because of its status, not "waiting". Another possible
+reason is that the job was canceled during its execution (by settings
+its status to ``STATUSES.CANCELED``)
 
 -  ``queue``: The queue from which the job was fetched.
 
@@ -431,6 +433,18 @@ be executed because of its status, not "waiting".
 This method, if defined on your job model (it's not there by default, ie
 "ghost") is called by the worker when the job failed and has been
 requeued by the worker.
+
+-  ``queue``: The queue from which the job was fetched.
+
+``on_delayed`` (ghost method)
+'''''''''''''''''''''''''''''
+
+This method, if defined on your job model (it's not there by default, ie
+"ghost") is called by the worker when the job was delayed (by settings
+its status to ``STATUSES.DELAYED``) during its execution (note that you
+may also want to set the ``delayed_until`` of the job value to a correct
+one datetime (a string represetation of an utc datetime), or the worker
+will delay it for 60 seconds)
 
 -  ``queue``: The queue from which the job was fetched.
 
@@ -632,8 +646,7 @@ with the value returned by the ``ident`` property of a job, and the
 message of the raised exception causing the failure.
 
 Not that the status of the jobs is changed only if their status was
-`STATUSES.DELAYED`. It allows to cancel a delayed job before.
-
+``STATUSES.DELAYED``. It allows to cancel a delayed job before.
 
 Queue class methods
 ^^^^^^^^^^^^^^^^^^^
@@ -837,21 +850,19 @@ If you use a subclass of the ``Error`` model, you can pass additional
 arguments to the ``add_error`` method simply by passing them as named
 arguments, they will be save in the object to be created.
 
-
 ``collection_for_job``
 ''''''''''''''''''''''
 
-The ``collection_for_job`` is a helper to retrieve the errors assiated with
-a given job, more precisely for all the instances of this job with the same
-identifier.
+The ``collection_for_job`` is a helper to retrieve the errors assiated
+with a given job, more precisely for all the instances of this job with
+the same identifier.
 
-The result is a `limpyd` collection, to you can use ``filter``, ``instances``...
-on it.
+The result is a ``limpyd`` collection, to you can use ``filter``,
+``instances``... on it.
 
 Arguments:
 
 -  ``job`` The job for which we want errors
-
 
 The worker(s)
 -------------
@@ -1388,6 +1399,10 @@ When a job is fetched in the ``run`` method, its status is checked. If
 it's not ``STATUSES.WAITING``, this ``job_skipped`` method is called,
 with two main arguments: the job and the queue in which it was found.
 
+This method is also called when the job is canceled during its execution
+(ie if, when the execution is done, the job's status is
+``STATUSES.CANCELED``).
+
 This method remove the ``queued`` flag of the job, logs the message
 returned by the ``job_skipped_message`` method, then call, if defined,
 the ``on_skipped`` method of the job.
@@ -1450,6 +1465,11 @@ having raised any exception, the job is considered successful, and the
 ``job_success`` method is called, with the job and the queue in which it
 was found, and the return value of the callback method.
 
+Note that this method is not called, and so the job not considered a
+"success" if, when the execution is done, the status of the job is
+either ``STATUS.CANCELED`` or ``STATUS.DELAYED``. In these cases, the
+methods ``job_skipped`` and ``job_delayed`` are called respectively.
+
 This method remove the ``queued`` flag of the job, updates its ``end``
 and ``status`` fields, moves the job into the ``success`` list of the
 queue, then log the message returned by ``job_success_message`` and
@@ -1465,6 +1485,46 @@ Signature:
     def job_success_message(self, job, queue, job_result):
 
 Returns a string to be logged in ``job_success``.
+
+``job_delayed``
+'''''''''''''''
+
+Signature:
+
+.. code:: python
+
+    def job_delayed(self, job, queue):
+
+Returns nothing.
+
+When the callback (or the ``execute`` method) is finished, without
+having raised an exception, and the status of the job at this moment is
+``STATUSES.DELAYED``, the job is not successful but not in error: it
+will be delayed.
+
+This method check if the job has a ``delayed_until`` value, and if not,
+or if an invalid one, it is set to 60 seconds in the future. You may
+want to explicitly set this value, or at least clear the field because
+if the job was initially delayed, the value may be set, but in the past,
+and the job will be delayed to this date, so, not delayed but just
+queued.
+
+With this value, the method ``enqueue_or_delay`` of the queue is called,
+to really delay the job.
+
+Then, log the message returned by ``job_delayed_message`` and finally
+call, if defined, the ``on_delayed`` method of the job.
+
+``job_delayed_message``
+'''''''''''''''''''''''
+
+Signature:
+
+.. code:: python
+
+    def job_delayed_message(self, job, queue):
+
+Returns a string to be logged in ``job_delayed``.
 
 ``job_error``
 '''''''''''''
