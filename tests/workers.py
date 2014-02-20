@@ -683,7 +683,7 @@ class WorkerRunTests(LimpydBaseTest):
         with self.assertRaises(LimpydJobsException):
             worker.run()
 
-    def test_job_skipped_method_should_be_called_if_job_not_in_waiting_status(self):
+    def test_job_skipped_method_should_be_called_if_job_not_in_waiting_or_delayed_status(self):
         class TestWorker(Worker):
             passed = False
 
@@ -697,15 +697,50 @@ class WorkerRunTests(LimpydBaseTest):
         for status in ('CANCELED', 'RUNNING', 'SUCCESS', 'ERROR'):
             job = Job.add_job(identifier='job:1', queue_name='test')
             job.status.hset(STATUSES[status])
+
             worker = TestWorker('test', max_loops=1)
             worker.run()
+
             self.assertEqual(worker.passed, STATUSES[status])
+
             # job ignored: keep its status, and removed from queue
             queue = Queue.get_queue('test')
             self.assertEqual(queue.waiting.llen(), 0)
             self.assertEqual(queue.success.llen(), 0)
             self.assertEqual(queue.errors.llen(), 0)
+            self.assertEqual(queue.delayed.zcard(), 0)
             self.assertEqual(job.status.hget(), STATUSES[status])
+
+    def test_job_delayed_method_should_be_called_if_job_in_delayed_status(self):
+        class TestWorker(Worker):
+            passed = False
+
+            def execute():
+                pass
+
+            def job_delayed(self, job, queue):
+                super(TestWorker, self).job_delayed(job, queue)
+                self.passed = job._cached_status
+
+        job = Job.add_job(identifier='job:1', queue_name='test')
+
+        job.status.hset(STATUSES.DELAYED)
+        delay_until = str(datetime.utcnow() + timedelta(seconds=500))
+        job.delayed_until.hset(delay_until)
+
+        worker = TestWorker('test', max_loops=1)
+        worker.run()
+
+        self.assertEqual(worker.passed, STATUSES.DELAYED)
+        # job delayed: keep its status, and moved in delayed
+        queue = Queue.get_queue('test')
+        self.assertEqual(queue.waiting.llen(), 0)
+        self.assertEqual(queue.success.llen(), 0)
+        self.assertEqual(queue.errors.llen(), 0)
+        self.assertEqual(queue.delayed.zcard(), 1)
+        self.assertEqual(queue.delayed.zmembers(), [job.ident])
+        self.assertEqual(job.status.hget(), STATUSES.DELAYED)
+        self.assertEqual(job.delayed_until.hget(), delay_until)
 
     def test_worker_without_queues_should_wait_one_available(self):
         worker = Worker('test', max_loops=1, fetch_priorities_delay=1)

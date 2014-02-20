@@ -404,7 +404,9 @@ class Worker(object):
                     job._cached_status = status
                     queue._cached_name = queue.name.hget()
 
-                    if status != STATUSES.WAITING:
+                    if status == STATUSES.DELAYED:
+                        self.job_delayed(job, queue)
+                    elif status != STATUSES.WAITING:
                         self.job_skipped(job, queue)
                     else:
                         try:

@@ -444,7 +444,10 @@ This method, if defined on your job model (it's not there by default, ie
 its status to ``STATUSES.DELAYED``) during its execution (note that you
 may also want to set the ``delayed_until`` of the job value to a correct
 one datetime (a string represetation of an utc datetime), or the worker
-will delay it for 60 seconds)
+will delay it for 60 seconds).
+
+It can also be called if the job's status was set to
+``STATUSES.DELAYED`` while still in the ``waiting`` list of the queue.
 
 -  ``queue``: The queue from which the job was fetched.
 
@@ -1501,6 +1504,10 @@ When the callback (or the ``execute`` method) is finished, without
 having raised an exception, and the status of the job at this moment is
 ``STATUSES.DELAYED``, the job is not successful but not in error: it
 will be delayed.
+
+Another way to have this method called if its a job is in the
+``waiting`` queue but its status was set to ``STATUSES.DELAYED``. In
+this cas, the job is not executed, but delayed by calling this method.
 
 This method check if the job has a ``delayed_until`` value, and if not,
 or if an invalid one, it is set to 60 seconds in the future. You may
