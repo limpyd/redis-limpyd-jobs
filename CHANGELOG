@@ -1,3 +1,7 @@
+V 0.0.18  2014-02-21
+
+    * Log traceback in case of major failures
+
 V 0.0.17  2014-02-20
 
     * Ability to delay a job before its execution

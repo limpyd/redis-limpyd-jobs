@@ -389,7 +389,8 @@ class Worker(object):
                     continue
                 queue, job = queue_and_job
             except Exception, e:
-                self.log('Unable to get job: %s' % str(e), level='error')
+                self.log('Unable to get job: %s\n%s'
+                    % (str(e), traceback.format_exc()), level='error')
             else:
                 self.num_loops += 1
                 try:
@@ -426,13 +427,13 @@ class Worker(object):
                             else:
                                 self.job_success(job, queue, job_result)
                 except Exception, e:
-                    self.log('[%s] unexpected error: %s' % (identifier, str(e)),
-                                                                 level='error')
+                    self.log('[%s] unexpected error: %s\n%s'
+                        % (identifier, str(e), traceback.format_exc()), level='error')
                     try:
                         queue.errors.rpush(job.ident)
                     except Exception, e:
-                        self.log('[%s] unable to add the error in the queue: %s'
-                         % (identifier, str(e)), level='error')
+                        self.log('[%s] unable to add the error in the queue: %s\n%s'
+                            % (identifier, str(e), traceback.format_exc()), level='error')
 
     def run_ended(self):
         """
