@@ -1,12 +1,25 @@
+from __future__ import unicode_literals
+from future.builtins import str
+from future import standard_library
+standard_library.install_hooks()
+from future.builtins import object
+
 import logging
 import threading
 import time
 import signal
 import sys
-from StringIO import StringIO
-from setproctitle import getproctitle
+
 from datetime import datetime, timedelta
+
+if sys.version_info >= (3, ):
+    from io import StringIO
+else:
+    from StringIO import StringIO
+
+
 from dateutil.parser import parse
+from setproctitle import getproctitle
 
 from limpyd import __version__ as limpyd_version, fields
 from limpyd.contrib.database import PipelineDatabase
@@ -1035,7 +1048,7 @@ class WorkerRunTests(LimpydBaseTest):
 
         delayed_until = parse(job.delayed_until.hget())
         delayed_until_expected = datetime.utcnow() + timedelta(seconds=60)
-        self.assertTrue((delayed_until_expected - delayed_until).total_seconds() < 0.5)
+        self.assertTrue(total_seconds(delayed_until_expected - delayed_until) < 0.5)
 
         # job_delayed must have been called
         self.assertEqual(job.foo.hget(), 'bar')
@@ -1060,7 +1073,7 @@ class WorkerRunTests(LimpydBaseTest):
 
         delayed_until = parse(job.delayed_until.hget())
         delayed_until_expected = datetime.utcnow() + timedelta(seconds=60)
-        self.assertTrue((delayed_until_expected - delayed_until).total_seconds() < 0.5)
+        self.assertTrue(total_seconds(delayed_until_expected - delayed_until) < 0.5)
 
         # job_delayed must have been called
         self.assertEqual(job.foo.hget(), 'bar')
@@ -1163,7 +1176,7 @@ class WorkerConfigBaseTests(LimpydBaseTest):
         self.old_stdout = sys.stdout
         sys.stdout = self.stdout = StringIO()
         self.old_stderr = sys.stderr
-        self.stderr = StringIO()
+        sys.stderr = self.stderr = StringIO()
 
     def tearDown(self):
         sys.stdout = self.old_stdout
@@ -1192,6 +1205,7 @@ class WorkerClassWithModels(Worker):
     queue_model = QueueModel
     error_model = ErrorModel
     callback = lambda j, q: None
+
 
 class WorkerConfigArgumentsTests(WorkerConfigBaseTests):
 
@@ -1222,7 +1236,7 @@ class WorkerConfigArgumentsTests(WorkerConfigBaseTests):
         self.assertIn('queues = foo', out)
         self.assertIn('dry-run = True', out)
         self.assertIn('database = localhost:6379:15', out)
-        self.assertIn("worker-config = <class 'tests.workers.TestWorkerConfig'>", out)
+        self.assertRegexpMatches(out, "worker-config = <class 'tests.workers(.[^ ]*)?.TestWorkerConfig")
 
     def test_dryrun_argument(self):
         conf = WorkerConfig(self.mkargs('--dry-run'))
@@ -1357,7 +1371,7 @@ class WorkerConfigArgumentsTests(WorkerConfigBaseTests):
         conf = WorkerConfig(self.mkargs('--timeout=5'))
         self.assertEqual(conf.options.timeout, 5)
 
-        with self.assertSystemExit(in_stderr="option --timeout: invalid integer value: 'none'"):
+        with self.assertSystemExit(in_stderr="option --timeout: invalid integer value:"):
             WorkerConfig(self.mkargs('--timeout=none'))
 
         with self.assertSystemExit(in_stderr="must be a positive integer (including 0)"):
@@ -1367,7 +1381,7 @@ class WorkerConfigArgumentsTests(WorkerConfigBaseTests):
         conf = WorkerConfig(self.mkargs('--fetch-priorities-delay=10'))
         self.assertEqual(conf.options.fetch_priorities_delay, 10)
 
-        with self.assertSystemExit(in_stderr="option --fetch-priorities-delay: invalid integer value: 'none'"):
+        with self.assertSystemExit(in_stderr="option --fetch-priorities-delay: invalid integer value:"):
             WorkerConfig(self.mkargs('--fetch-priorities-delay=none'))
 
         with self.assertSystemExit(in_stderr="must be a positive integer"):
@@ -1377,7 +1391,7 @@ class WorkerConfigArgumentsTests(WorkerConfigBaseTests):
         conf = WorkerConfig(self.mkargs('--fetch-delayed-delay=10'))
         self.assertEqual(conf.options.fetch_delayed_delay, 10)
 
-        with self.assertSystemExit(in_stderr="option --fetch-delayed-delay: invalid integer value: 'none'"):
+        with self.assertSystemExit(in_stderr="option --fetch-delayed-delay: invalid integer value:"):
             WorkerConfig(self.mkargs('--fetch-delayed-delay=none'))
 
         with self.assertSystemExit(in_stderr="must be a positive integer"):
@@ -1387,7 +1401,7 @@ class WorkerConfigArgumentsTests(WorkerConfigBaseTests):
         conf = WorkerConfig(self.mkargs('--requeue-times=3'))
         self.assertEqual(conf.options.requeue_times, 3)
 
-        with self.assertSystemExit(in_stderr="option --requeue-times: invalid integer value: 'none'"):
+        with self.assertSystemExit(in_stderr="option --requeue-times: invalid integer value:"):
             WorkerConfig(self.mkargs('--requeue-times=none'))
 
         with self.assertSystemExit(in_stderr="must be a positive integer (including 0)"):
@@ -1397,14 +1411,14 @@ class WorkerConfigArgumentsTests(WorkerConfigBaseTests):
         conf = WorkerConfig(self.mkargs('--requeue-priority-delta=-2'))
         self.assertEqual(conf.options.requeue_priority_delta, -2)
 
-        with self.assertSystemExit(in_stderr="option --requeue-priority-delta: invalid integer value: 'none'"):
+        with self.assertSystemExit(in_stderr="option --requeue-priority-delta: invalid integer value:"):
             WorkerConfig(self.mkargs('--requeue-priority-delta=none'))
 
     def test_requeue_delay_delta_argument(self):
         conf = WorkerConfig(self.mkargs('--requeue-delay-delta=20'))
         self.assertEqual(conf.options.requeue_delay_delta, 20)
 
-        with self.assertSystemExit(in_stderr="option --requeue-delay-delta: invalid integer value: 'none'"):
+        with self.assertSystemExit(in_stderr="option --requeue-delay-delta: invalid integer value:"):
             WorkerConfig(self.mkargs('--requeue-delay-delta=none'))
 
         with self.assertSystemExit(in_stderr="must be a positive integer (including 0)"):

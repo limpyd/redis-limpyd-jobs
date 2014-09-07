@@ -1,14 +1,20 @@
+from __future__ import print_function
+from __future__ import unicode_literals
+from future.builtins import str
+from future.builtins import object
+
 import logging
 import signal
 import sys
 import threading
 import traceback
 import os.path
-from datetime import datetime, timedelta
-from dateutil.parser import parse
-from time import sleep
-from optparse import make_option, OptionParser
 
+from datetime import datetime, timedelta
+from optparse import make_option, OptionParser
+from time import sleep
+
+from dateutil.parser import parse
 from setproctitle import setproctitle
 
 from limpyd import __version__ as limpyd_version
@@ -82,10 +88,10 @@ class Worker(object):
 
         if isinstance(queues, (list, tuple)):
             for queue_name in queues:
-                if not isinstance(queue_name, basestring):
+                if not isinstance(queue_name, str):
                     raise ConfigurationException('Queue name "%s" is not a (base)string')
 
-        elif isinstance(queues, basestring):
+        elif isinstance(queues, str):
             queues = queues.split(',')
 
         else:
@@ -388,14 +394,14 @@ class Worker(object):
                     # timeout for blpop
                     continue
                 queue, job = queue_and_job
-            except Exception, e:
+            except Exception as e:
                 self.log('Unable to get job: %s\n%s'
                     % (str(e), traceback.format_exc()), level='error')
             else:
                 self.num_loops += 1
                 try:
                     identifier = 'pk:%s' % job.pk.get()
-                except Exception, e:
+                except Exception as e:
                     identifier = '??'
                 try:
                     self.set_status('running')
@@ -413,7 +419,7 @@ class Worker(object):
                         try:
                             self.job_started(job, queue)
                             job_result = self.callback(job, queue)
-                        except Exception, e:
+                        except Exception as e:
                             trace = None
                             if self.save_tracebacks:
                                 trace = traceback.format_exc()
@@ -426,12 +432,12 @@ class Worker(object):
                                 self.job_skipped(job, queue)
                             else:
                                 self.job_success(job, queue, job_result)
-                except Exception, e:
+                except Exception as e:
                     self.log('[%s] unexpected error: %s\n%s'
                         % (identifier, str(e), traceback.format_exc()), level='error')
                     try:
                         queue.errors.rpush(job.ident)
-                    except Exception, e:
+                    except Exception as e:
                         self.log('[%s] unable to add the error in the queue: %s\n%s'
                             % (identifier, str(e), traceback.format_exc()), level='error')
 
@@ -803,7 +809,7 @@ class WorkerConfig(object):
             else:
                 klass = default
             setattr(self.options, name, klass)
-        except Exception, e:
+        except Exception as e:
             self.parser.error('Unable to import "%s": %s' % (name, e))
 
     def do_imports(self):
@@ -821,7 +827,7 @@ class WorkerConfig(object):
         """
         options = []
 
-        print "The script is running with the following options:"
+        print("The script is running with the following options:")
 
         options.append(("dry_run", self.options.dry_run))
 
@@ -837,9 +843,9 @@ class WorkerConfig(object):
             options.append(("worker-class", self.options.worker_class))
 
         for name, value in options:
-            print " - %s = %s" % (name.replace('_', '-'), value)
+            print(" - %s = %s" % (name.replace('_', '-'), value))
 
-        print "The worker will run with the following options:"
+        print("The worker will run with the following options:")
         for name in self.options.worker_class.parameters:
             option = getattr(self.worker, name)
             if name == 'callback' and \
@@ -847,7 +853,7 @@ class WorkerConfig(object):
                 option = '<jobs "run" method>'
             elif isinstance(option, (list, tuple, set)):
                 option = ','.join(option)
-            print " - %s = %s" % (name.replace('_', '-'), option)
+            print(" - %s = %s" % (name.replace('_', '-'), option))
 
     def execute(self):
         """

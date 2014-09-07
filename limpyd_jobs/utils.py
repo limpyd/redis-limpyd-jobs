@@ -1,3 +1,7 @@
+from __future__ import unicode_literals
+from __future__ import division
+from future.builtins import int
+
 from datetime import datetime, timedelta
 import time
 
@@ -6,7 +10,7 @@ def datetime_to_score(dt):
     """
     Convert the given datetime object to be usable as a zset score
     """
-    return time.mktime(dt.timetuple()) + dt.microsecond / 1000000.0
+    return time.mktime(dt.timetuple()) + dt.microsecond / 1000000
 
 
 def get_delta(value):
@@ -15,7 +19,7 @@ def get_delta(value):
     or a number of seconds (int or float).
     Raise an exception in all other cases.
     """
-    if isinstance(value, (int, long, float)):
+    if isinstance(value, (int, float)):
         return timedelta(seconds=value)
     elif isinstance(value, timedelta):
         return value
@@ -68,7 +72,7 @@ def import_class(class_uri):
 
     try:
         module = import_module(module_uri)
-    except ImportError, e:
+    except ImportError as e:
         # maybe we are still in a module, test going up one level
         try:
             module = import_class(module_uri)
@@ -86,4 +90,3 @@ def total_seconds(td):
         return td.total_seconds()  # pragma: no cover
     else:
         return (td.microseconds + (td.seconds + td.days * 24 * 3600) * 10**6) / 10**6  # pragma: no cover
-
