@@ -1,3 +1,4 @@
+from __future__ import unicode_literals
 from datetime import datetime, timedelta
 from dateutil.parser import parse
 from time import sleep
@@ -681,7 +682,7 @@ class ErrorTests(LimpydBaseTest):
 
         try:
             foo = bar
-        except Exception, e:
+        except Exception as e:
             trace = traceback.format_exc()
 
         error = Error.add_error(queue_name='test', job=job, error=e, trace=trace)

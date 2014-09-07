@@ -1,3 +1,4 @@
+from __future__ import unicode_literals
 from datetime import datetime
 from dateutil.parser import parse
 from redis.client import Lock
@@ -228,7 +229,7 @@ class Queue(BaseJobsModel):
                     if job.status.hget() == STATUSES.DELAYED:
                         job.status.hset(STATUSES.WAITING)
                     self.enqueue_job(job)
-                except Exception, e:
+                except Exception as e:
                     failures.append((job_ident, '%s' % e))
 
             return failures

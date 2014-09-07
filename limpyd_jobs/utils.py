@@ -1,3 +1,4 @@
+from __future__ import unicode_literals
 from datetime import datetime, timedelta
 import time
 
@@ -68,7 +69,7 @@ def import_class(class_uri):
 
     try:
         module = import_module(module_uri)
-    except ImportError, e:
+    except ImportError as e:
         # maybe we are still in a module, test going up one level
         try:
             module = import_class(module_uri)

@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 "A worker for redis-limpyd-jobs, to use on the command line"
+from __future__ import unicode_literals
 
 import sys
 import glob
@@ -136,7 +137,7 @@ def main():
         # finally instantiate and run the worker
         worker_config = worker_config_class()
         worker_config.execute()
-    except ImportError, e:
+    except ImportError as e:
         parser.print_lax_help()
         parser.lax_error('No WorkerConfig found. You need to use --pythonpath '
                          'and/or --worker-config: %s' % str(e))
