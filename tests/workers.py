@@ -1358,7 +1358,7 @@ class WorkerConfigArgumentsTests(WorkerConfigBaseTests):
         conf = WorkerConfig(self.mkargs('--timeout=5'))
         self.assertEqual(conf.options.timeout, 5)
 
-        with self.assertSystemExit(in_stderr="option --timeout: invalid integer value: 'none'"):
+        with self.assertSystemExit(in_stderr="option --timeout: invalid integer value:"):
             WorkerConfig(self.mkargs('--timeout=none'))
 
         with self.assertSystemExit(in_stderr="must be a positive integer (including 0)"):
@@ -1368,7 +1368,7 @@ class WorkerConfigArgumentsTests(WorkerConfigBaseTests):
         conf = WorkerConfig(self.mkargs('--fetch-priorities-delay=10'))
         self.assertEqual(conf.options.fetch_priorities_delay, 10)
 
-        with self.assertSystemExit(in_stderr="option --fetch-priorities-delay: invalid integer value: 'none'"):
+        with self.assertSystemExit(in_stderr="option --fetch-priorities-delay: invalid integer value:"):
             WorkerConfig(self.mkargs('--fetch-priorities-delay=none'))
 
         with self.assertSystemExit(in_stderr="must be a positive integer"):
@@ -1378,7 +1378,7 @@ class WorkerConfigArgumentsTests(WorkerConfigBaseTests):
         conf = WorkerConfig(self.mkargs('--fetch-delayed-delay=10'))
         self.assertEqual(conf.options.fetch_delayed_delay, 10)
 
-        with self.assertSystemExit(in_stderr="option --fetch-delayed-delay: invalid integer value: 'none'"):
+        with self.assertSystemExit(in_stderr="option --fetch-delayed-delay: invalid integer value:"):
             WorkerConfig(self.mkargs('--fetch-delayed-delay=none'))
 
         with self.assertSystemExit(in_stderr="must be a positive integer"):
@@ -1388,7 +1388,7 @@ class WorkerConfigArgumentsTests(WorkerConfigBaseTests):
         conf = WorkerConfig(self.mkargs('--requeue-times=3'))
         self.assertEqual(conf.options.requeue_times, 3)
 
-        with self.assertSystemExit(in_stderr="option --requeue-times: invalid integer value: 'none'"):
+        with self.assertSystemExit(in_stderr="option --requeue-times: invalid integer value:"):
             WorkerConfig(self.mkargs('--requeue-times=none'))
 
         with self.assertSystemExit(in_stderr="must be a positive integer (including 0)"):
@@ -1398,14 +1398,14 @@ class WorkerConfigArgumentsTests(WorkerConfigBaseTests):
         conf = WorkerConfig(self.mkargs('--requeue-priority-delta=-2'))
         self.assertEqual(conf.options.requeue_priority_delta, -2)
 
-        with self.assertSystemExit(in_stderr="option --requeue-priority-delta: invalid integer value: 'none'"):
+        with self.assertSystemExit(in_stderr="option --requeue-priority-delta: invalid integer value:"):
             WorkerConfig(self.mkargs('--requeue-priority-delta=none'))
 
     def test_requeue_delay_delta_argument(self):
         conf = WorkerConfig(self.mkargs('--requeue-delay-delta=20'))
         self.assertEqual(conf.options.requeue_delay_delta, 20)
 
-        with self.assertSystemExit(in_stderr="option --requeue-delay-delta: invalid integer value: 'none'"):
+        with self.assertSystemExit(in_stderr="option --requeue-delay-delta: invalid integer value:"):
             WorkerConfig(self.mkargs('--requeue-delay-delta=none'))
 
         with self.assertSystemExit(in_stderr="must be a positive integer (including 0)"):
