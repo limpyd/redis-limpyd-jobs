@@ -21,7 +21,7 @@ class STATUSES(dict):
         Returns the key for the given value
         """
         try:
-            return [k for k, v in self.iteritems() if v == value][0]
+            return [k for k, v in self.items() if v == value][0]
         except IndexError:
             if default is not None:
                 return default

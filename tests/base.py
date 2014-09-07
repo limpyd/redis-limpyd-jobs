@@ -1,4 +1,8 @@
 from __future__ import unicode_literals
+from future.builtins import object
+from future import standard_library
+standard_library.install_hooks()
+
 import sys
 if sys.version_info >= (2, 7):
     from unittest.case import _AssertRaisesContext
@@ -7,8 +11,12 @@ else:
     from unittest2.case import _AssertRaisesContext
     import unittest2 as unittest
 
-from StringIO import StringIO
 from datetime import timedelta
+
+if sys.version_info >= (3, ):
+    from io import StringIO
+else:
+    from StringIO import StringIO
 
 from limpyd.database import DEFAULT_CONNECTION_SETTINGS
 from limpyd.contrib.database import PipelineDatabase
@@ -169,7 +177,7 @@ class LimpydBaseTestTest(LimpydBaseTest):
             self.assertEqual(STATUSES.get(status), value)
             self.assertEqual(STATUSES.by_value(value), status)
 
-        self.assertEqual(len(STATUSES.keys()), 6)
+        self.assertEqual(len(list(STATUSES.keys())), 6)
 
         self.assertEqual(STATUSES.by_value('x', 'UNKNOWN'), 'UNKNOWN')
 

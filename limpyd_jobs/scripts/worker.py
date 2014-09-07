@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 "A worker for redis-limpyd-jobs, to use on the command line"
 from __future__ import unicode_literals
+from future.builtins import str
 
 import sys
 import glob

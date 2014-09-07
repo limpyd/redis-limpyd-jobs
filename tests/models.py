@@ -1,8 +1,13 @@
 from __future__ import unicode_literals
+from future.builtins import str
+from future import standard_library
+standard_library.install_hooks()
+
 from datetime import datetime, timedelta
-from dateutil.parser import parse
 from time import sleep
 import traceback
+
+from dateutil.parser import parse
 
 from limpyd import fields
 
@@ -685,8 +690,8 @@ class ErrorTests(LimpydBaseTest):
         except Exception as e:
             trace = traceback.format_exc()
 
-        error = Error.add_error(queue_name='test', job=job, error=e, trace=trace)
-        self.assertIn("NameError: global name 'bar' is not defined", error.traceback.hget())
+            error = Error.add_error(queue_name='test', job=job, error=e, trace=trace)
+            self.assertRegexpMatches(error.traceback.hget(), "NameError:[^\n]+bar[^\n]+ is not defined")
 
     def test_extended_error_can_accept_other_fields(self):
         class ExtendedError(Error):

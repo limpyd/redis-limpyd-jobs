@@ -1,5 +1,9 @@
 from __future__ import unicode_literals
+from future.builtins import str
+from future.utils import iteritems
+
 from datetime import datetime
+
 from dateutil.parser import parse
 from redis.client import Lock
 
@@ -28,7 +32,7 @@ class BaseJobsModel(related.RelatedModel):
         """
         Set many fields using the proxy setter for each of them.
         """
-        for field_name, value in fields.iteritems():
+        for field_name, value in iteritems(fields):
             field = getattr(self, field_name)
             field.proxy_set(value)
 
@@ -98,7 +102,7 @@ class Queue(BaseJobsModel):
         Ensure that we have an iterable list of names, even if we have a single
         name
         """
-        if isinstance(names, basestring):
+        if isinstance(names, str):
             names = (names, )
         return names
 

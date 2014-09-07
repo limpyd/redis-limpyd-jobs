@@ -1,16 +1,20 @@
 from __future__ import print_function
 from __future__ import unicode_literals
+from future.builtins import str
+from future.builtins import object
+
 import logging
 import signal
 import sys
 import threading
 import traceback
 import os.path
-from datetime import datetime, timedelta
-from dateutil.parser import parse
-from time import sleep
-from optparse import make_option, OptionParser
 
+from datetime import datetime, timedelta
+from optparse import make_option, OptionParser
+from time import sleep
+
+from dateutil.parser import parse
 from setproctitle import setproctitle
 
 from limpyd import __version__ as limpyd_version
@@ -84,10 +88,10 @@ class Worker(object):
 
         if isinstance(queues, (list, tuple)):
             for queue_name in queues:
-                if not isinstance(queue_name, basestring):
+                if not isinstance(queue_name, str):
                     raise ConfigurationException('Queue name "%s" is not a (base)string')
 
-        elif isinstance(queues, basestring):
+        elif isinstance(queues, str):
             queues = queues.split(',')
 
         else:

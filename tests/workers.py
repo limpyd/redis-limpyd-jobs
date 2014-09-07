@@ -1,13 +1,25 @@
 from __future__ import unicode_literals
+from future.builtins import str
+from future import standard_library
+standard_library.install_hooks()
+from future.builtins import object
+
 import logging
 import threading
 import time
 import signal
 import sys
-from StringIO import StringIO
-from setproctitle import getproctitle
+
 from datetime import datetime, timedelta
+
+if sys.version_info >= (3, ):
+    from io import StringIO
+else:
+    from StringIO import StringIO
+
+
 from dateutil.parser import parse
+from setproctitle import getproctitle
 
 from limpyd import __version__ as limpyd_version, fields
 from limpyd.contrib.database import PipelineDatabase
@@ -1164,7 +1176,7 @@ class WorkerConfigBaseTests(LimpydBaseTest):
         self.old_stdout = sys.stdout
         sys.stdout = self.stdout = StringIO()
         self.old_stderr = sys.stderr
-        self.stderr = StringIO()
+        sys.stderr = self.stderr = StringIO()
 
     def tearDown(self):
         sys.stdout = self.old_stdout
@@ -1193,6 +1205,7 @@ class WorkerClassWithModels(Worker):
     queue_model = QueueModel
     error_model = ErrorModel
     callback = lambda j, q: None
+
 
 class WorkerConfigArgumentsTests(WorkerConfigBaseTests):
 
@@ -1223,7 +1236,7 @@ class WorkerConfigArgumentsTests(WorkerConfigBaseTests):
         self.assertIn('queues = foo', out)
         self.assertIn('dry-run = True', out)
         self.assertIn('database = localhost:6379:15', out)
-        self.assertIn("worker-config = <class 'tests.workers.TestWorkerConfig'>", out)
+        self.assertRegexpMatches(out, "worker-config = <class 'tests.workers(.[^ ]*)?.TestWorkerConfig")
 
     def test_dryrun_argument(self):
         conf = WorkerConfig(self.mkargs('--dry-run'))
