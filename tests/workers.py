@@ -1036,7 +1036,7 @@ class WorkerRunTests(LimpydBaseTest):
 
         delayed_until = parse(job.delayed_until.hget())
         delayed_until_expected = datetime.utcnow() + timedelta(seconds=60)
-        self.assertTrue((delayed_until_expected - delayed_until).total_seconds() < 0.5)
+        self.assertTrue(total_seconds(delayed_until_expected - delayed_until) < 0.5)
 
         # job_delayed must have been called
         self.assertEqual(job.foo.hget(), 'bar')
@@ -1061,7 +1061,7 @@ class WorkerRunTests(LimpydBaseTest):
 
         delayed_until = parse(job.delayed_until.hget())
         delayed_until_expected = datetime.utcnow() + timedelta(seconds=60)
-        self.assertTrue((delayed_until_expected - delayed_until).total_seconds() < 0.5)
+        self.assertTrue(total_seconds(delayed_until_expected - delayed_until) < 0.5)
 
         # job_delayed must have been called
         self.assertEqual(job.foo.hget(), 'bar')
