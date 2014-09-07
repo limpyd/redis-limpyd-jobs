@@ -2,11 +2,19 @@
 # -*- coding: utf-8 -*-
 
 import codecs
+from pip.req import parse_requirements
 import os
-
-from setuptools import setup
+from setuptools import setup, find_packages
 
 basedir = os.path.dirname(__file__)
+
+
+def get_requirements(source):
+    install_reqs = parse_requirements(source)
+    return set([str(ir.req) for ir in install_reqs])
+
+
+requirements = get_requirements('requirements.txt')
 
 
 def get_infos():
@@ -35,9 +43,9 @@ setup(
     keywords = "redis, jobs",
     url = infos['__homepage__'],
     download_url = "https://github.com/twidi/redis-limpyd-jobs/tags",
-    packages = ['limpyd_jobs', 'limpyd_jobs.scripts'],
+    packages = find_packages(exclude=["tests.*", "tests"]),
     include_package_data=True,
-    install_requires=["redis-limpyd", "redis-limpyd-extensions", "python-dateutil", "setproctitle"],
+    install_requires=requirements,
     license = "DO WHAT THE FUCK YOU WANT TO PUBLIC LICENSE",
     platforms=["any"],
     zip_safe=True,
@@ -58,6 +66,8 @@ setup(
         "Operating System :: OS Independent",
         "Topic :: Software Development :: Libraries :: Python Modules",
         "Programming Language :: Python",
+        "Programming Language :: Python :: 2",
+        "Programming Language :: Python :: 2.6",
+        "Programming Language :: Python :: 2.7",
     ],
 )
-
