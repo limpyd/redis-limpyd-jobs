@@ -1,3 +1,7 @@
+V 0.1.0  2014-09-07
+
+    * Adding support for python 3.3 and 3.4
+
 V 0.0.18  2014-02-21
 
     * Log traceback in case of major failures

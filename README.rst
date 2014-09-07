@@ -13,11 +13,23 @@ Where to find it:
 -  Pypi package: https://pypi.python.org/pypi/redis-limpyd-jobs
 -  Documentation: http://documentup.com/twidi/redis-limpyd-jobs
 
+Install:
+
+Python 2.6, 2.7, 3.3 and 3.4 are supported.
+
+.. code:: bash
+
+    pip install --process-dependency-links redis-limpyd-jobs
+
+*Note: the ``process-dependency-links`` is currently required to use a
+development version of future which correct a bug ``redis-limpyd``
+suffered from.*
+
 Note that you actually need the
 `redis-limpyd-extensions <https://github.com/twidi/redis-limpyd-extensions>`__
 in addition to
 `redis-limpyd <https://github.com/yohanboniface/redis-limpyd>`__ (both
-installed via pypi)
+are automatically installed via pypi)
 
 How it works
 ------------
