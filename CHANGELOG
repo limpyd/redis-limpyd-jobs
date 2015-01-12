@@ -1,3 +1,7 @@
+V 0.1.1  2015-01-12
+
+    * Stop requiring pip to process dependency links
+
 V 0.1.0  2014-09-07
 
     * Adding support for python 3.3 and 3.4
