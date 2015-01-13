@@ -19,11 +19,7 @@ Python 2.6, 2.7, 3.3 and 3.4 are supported.
 
 .. code:: bash
 
-    pip install --process-dependency-links redis-limpyd-jobs
-
-*Note: the ``process-dependency-links`` is currently required to use a
-development version of future which correct a bug ``redis-limpyd``
-suffered from.*
+    pip install redis-limpyd-jobs
 
 Note that you actually need the
 `redis-limpyd-extensions <https://github.com/twidi/redis-limpyd-extensions>`__
