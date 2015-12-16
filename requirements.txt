@@ -1,3 +1,4 @@
-redis-limpyd-extensions>=0.1.2
+redis-limpyd>=0.2.4
+redis-limpyd-extensions>=0.1.3
 setproctitle
 python-dateutil

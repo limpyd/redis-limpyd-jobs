@@ -235,6 +235,11 @@ class WorkerArgumentsTests(LimpydBaseTest):
         worker = Worker(queues='foo,bar')
         self.assertEqual(worker.queues, ['foo', 'bar'])
 
+        worker = Worker(queues=u'foo')
+        self.assertEqual(worker.queues, ['foo'])
+        worker = Worker(queues=u'foo,bar')
+        self.assertEqual(worker.queues, ['foo', 'bar'])
+
     def test_queues_can_be_passed_as_list(self):
         worker = Worker(queues=['foo'])
         self.assertEqual(worker.queues, ['foo'])

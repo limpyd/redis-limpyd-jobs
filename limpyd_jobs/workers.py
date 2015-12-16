@@ -2,6 +2,7 @@ from __future__ import print_function
 from __future__ import unicode_literals
 from future.builtins import str
 from future.builtins import object
+from past.builtins import basestring
 
 import logging
 import signal
@@ -91,8 +92,8 @@ class Worker(object):
                 if not isinstance(queue_name, str):
                     raise ConfigurationException('Queue name "%s" is not a (base)string')
 
-        elif isinstance(queues, str):
-            queues = queues.split(',')
+        elif isinstance(queues, basestring):
+            queues = str(queues).split(',')
 
         else:
             raise ConfigurationException('Invalid format for queues names')

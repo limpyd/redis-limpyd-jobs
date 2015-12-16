@@ -5,9 +5,9 @@ from future.utils import iteritems
 from datetime import datetime
 
 from dateutil.parser import parse
-from redis.client import Lock
 
 from limpyd import fields
+from limpyd.database import Lock
 from limpyd.contrib import database, collection
 from limpyd_extensions import related
 
