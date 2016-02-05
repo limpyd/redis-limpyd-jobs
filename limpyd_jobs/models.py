@@ -1,6 +1,7 @@
 from __future__ import unicode_literals
 from future.builtins import str
 from future.utils import iteritems
+from past.builtins import basestring
 
 from datetime import datetime
 
@@ -102,7 +103,7 @@ class Queue(BaseJobsModel):
         Ensure that we have an iterable list of names, even if we have a single
         name
         """
-        if isinstance(names, str):
+        if isinstance(names, basestring):
             names = (names, )
         return names
 
