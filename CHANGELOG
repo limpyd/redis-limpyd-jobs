@@ -1,3 +1,11 @@
+V 0.1.5  2016-12-25
+
+    * Correct bug avoiding using a custom WorkerConfig class
+
+V 0.1.4  2016-02-05
+
+    * Correct a bug in `_get_iterable_for_names`
+
 V 0.1.3  2015-12-16
 
     * Compatibility with Redis-py 2.10
