@@ -1862,6 +1862,32 @@ given logs like:
 (the format used is
 ``"[%(process)d] %(asctime)s (%(name)s) %(levelname)-8s %(message)s"``)
 
+Executing code before loading worker class
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Sometimes you may want to do some initialization work before even
+loading the Worker class, for example, using django, to add
+``django.setup()``
+
+For this, simple override the ``WorkerConfig`` class:
+
+.. code:: python
+
+    import django
+
+    from limpyd_jobs.workers import WorkerConfig
+
+
+    class MyWorkerConfig(WorkerConfig):
+        def __init__(self, argv=None):
+
+            django.setup()
+
+            super(MyWorkerConfig, self).__init__(argv)
+
+And pass the python path to this class using the ``--worker-config``
+option to the ``limpyd-jobs-worker`` script.
+
 Tests
 -----
 
