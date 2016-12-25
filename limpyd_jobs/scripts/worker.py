@@ -116,7 +116,7 @@ def main():
     )
 
     # create a light option parser that ignore everything but basic options
-    # defined below
+    # defined above
     parser = LaxOptionParser(usage="%prog [options]", option_list=option_list)
     options, args = parser.parse_args(sys.argv[:])
 
@@ -133,7 +133,8 @@ def main():
 
         # and try to load the one passed as argument if any
         if options.worker_config:
-            worker_config_class = WorkerConfig.import_class(options.worker_config)
+            from limpyd_jobs.utils import import_class
+            worker_config_class = import_class(options.worker_config)
 
         # finally instantiate and run the worker
         worker_config = worker_config_class()

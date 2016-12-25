@@ -4,14 +4,14 @@ redis-limpyd-jobs
 =================
 
 A queue/jobs system based on
-`redis-limpyd <https://github.com/yohanboniface/redis-limpyd>`__
+`redis-limpyd <https://github.com/limpyd/redis-limpyd>`__
 (`redis <http://redis.io>`__ orm (sort of) in python)
 
 Where to find it:
 
--  Github repository: https://github.com/twidi/redis-limpyd-jobs
+-  Github repository: https://github.com/limpyd/redis-limpyd-jobs
 -  Pypi package: https://pypi.python.org/pypi/redis-limpyd-jobs
--  Documentation: http://documentup.com/twidi/redis-limpyd-jobs
+-  Documentation: http://documentup.com/limpyd/redis-limpyd-jobs
 
 Install:
 
@@ -22,10 +22,9 @@ Python 2.6, 2.7, 3.3 and 3.4 are supported.
     pip install redis-limpyd-jobs
 
 Note that you actually need the
-`redis-limpyd-extensions <https://github.com/twidi/redis-limpyd-extensions>`__
-in addition to
-`redis-limpyd <https://github.com/yohanboniface/redis-limpyd>`__ (both
-are automatically installed via pypi)
+`redis-limpyd-extensions <https://github.com/limpyd/redis-limpyd-extensions>`__
+in addition to `redis-limpyd <https://github.com/limpyd/redis-limpyd>`__
+(both are automatically installed via pypi)
 
 How it works
 ------------
@@ -1862,6 +1861,32 @@ given logs like:
 (the format used is
 ``"[%(process)d] %(asctime)s (%(name)s) %(levelname)-8s %(message)s"``)
 
+Executing code before loading worker class
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Sometimes you may want to do some initialization work before even
+loading the Worker class, for example, using django, to add
+``django.setup()``
+
+For this, simple override the ``WorkerConfig`` class:
+
+.. code:: python
+
+    import django
+
+    from limpyd_jobs.workers import WorkerConfig
+
+
+    class MyWorkerConfig(WorkerConfig):
+        def __init__(self, argv=None):
+
+            django.setup()
+
+            super(MyWorkerConfig, self).__init__(argv)
+
+And pass the python path to this class using the ``--worker-config``
+option to the ``limpyd-jobs-worker`` script.
+
 Tests
 -----
 
@@ -1919,11 +1944,7 @@ Final words
 The end.
 --------
 
-|Bitdeli Badge|
-
-.. |PyPI Version| image:: https://pypip.in/v/redis-limpyd-jobs/badge.png
+.. |PyPI Version| image:: https://img.shields.io/pypi/v/redis-limpyd-jobs.png
    :target: https://pypi.python.org/pypi/redis-limpyd-jobs
-.. |Build Status| image:: https://travis-ci.org/twidi/redis-limpyd-jobs.png?branch=master
-   :target: https://travis-ci.org/twidi/redis-limpyd-jobs
-.. |Bitdeli Badge| image:: https://d2weczhvl823v0.cloudfront.net/twidi/redis-limpyd-jobs/trend.png
-   :target: https://bitdeli.com/free
+.. |Build Status| image:: https://travis-ci.org/limpyd/redis-limpyd-jobs.png?branch=master
+   :target: https://travis-ci.org/limpyd/redis-limpyd-jobs
