@@ -1,5 +1,5 @@
-[![PyPI Version](https://pypip.in/v/redis-limpyd-jobs/badge.png)](https://pypi.python.org/pypi/redis-limpyd-jobs)
-[![Build Status](https://travis-ci.org/twidi/redis-limpyd-jobs.png?branch=master)](https://travis-ci.org/twidi/redis-limpyd-jobs)
+[![PyPI Version](https://img.shields.io/pypi/v/redis-limpyd-jobs.png)](https://pypi.python.org/pypi/redis-limpyd-jobs)
+[![Build Status](https://travis-ci.org/limpyd/redis-limpyd-jobs.png?branch=master)](https://travis-ci.org/limpyd/redis-limpyd-jobs)
 
 redis-limpyd-jobs
 =================
@@ -8,9 +8,9 @@ A queue/jobs system based on [redis-limpyd][] ([redis][] orm (sort of) in python
 
 Where to find it:
 
-* Github repository: https://github.com/twidi/redis-limpyd-jobs
+* Github repository: https://github.com/limpyd/redis-limpyd-jobs
 * Pypi package: https://pypi.python.org/pypi/redis-limpyd-jobs
-* Documentation: http://documentup.com/twidi/redis-limpyd-jobs
+* Documentation: http://documentup.com/limpyd/redis-limpyd-jobs
 
 Install:
 
@@ -1372,10 +1372,6 @@ The `nosetests` configuration is provided in the `setup.cfg` file and include th
 
 ## The end.
 
-[redis-limpyd-extensions]: https://github.com/twidi/redis-limpyd-extensions
+[redis-limpyd-extensions]: https://github.com/limpyd/redis-limpyd-extensions
 [redis]: http://redis.io
-[redis-limpyd]: https://github.com/yohanboniface/redis-limpyd
-
-
-[![Bitdeli Badge](https://d2weczhvl823v0.cloudfront.net/twidi/redis-limpyd-jobs/trend.png)](https://bitdeli.com/free "Bitdeli Badge")
-
+[redis-limpyd]: https://github.com/limpyd/redis-limpyd

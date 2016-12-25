@@ -51,7 +51,7 @@ setup(
     description = infos['__doc__'],
     keywords = "redis, jobs",
     url = infos['__homepage__'],
-    download_url = "https://github.com/twidi/redis-limpyd-jobs/tags",
+    download_url = "https://github.com/limpyd/redis-limpyd-jobs/tags",
     packages = find_packages(exclude=["tests.*", "tests"]),
     include_package_data=True,
     install_requires=requirements,

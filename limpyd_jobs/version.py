@@ -6,5 +6,5 @@ VERSION = (0, 1, 4)
 
 __author__ = 'Stephane "Twidi" Angel'
 __contact__ = "s.angel@twidi.com"
-__homepage__ = "https://github.com/twidi/redis-limpyd-jobs"
+__homepage__ = "https://github.com/limpyd/redis-limpyd-jobs"
 __version__ = ".".join(map(str, VERSION))
