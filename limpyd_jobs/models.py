@@ -8,8 +8,9 @@ from datetime import datetime
 from dateutil.parser import parse
 
 from limpyd import fields
-from limpyd.database import Lock
 from limpyd.contrib import database, collection
+from limpyd.contrib.indexes import SimpleDateTimeIndex
+from limpyd.database import Lock
 from limpyd_extensions import related
 
 from limpyd_jobs import STATUSES, LimpydJobsException
@@ -477,8 +478,9 @@ class Error(BaseJobsModel):
     job_pk = fields.InstanceHashField(indexable=True)
     identifier = fields.InstanceHashField(indexable=True)
     queue_name = fields.InstanceHashField(indexable=True)
-    date = fields.InstanceHashField(indexable=True)
-    time = fields.InstanceHashField()
+    date_time = fields.InstanceHashField(indexable=True, indexes=[SimpleDateTimeIndex])
+    date = fields.InstanceHashField(indexable=True)  # kept for now for compatibility
+    time = fields.InstanceHashField()  # kept for now for compatibility
     type = fields.InstanceHashField(indexable=True)
     code = fields.InstanceHashField(indexable=True)
     message = fields.InstanceHashField()
@@ -499,14 +501,16 @@ class Error(BaseJobsModel):
         """
         if when is None:
             when = datetime.utcnow()
+        when = str(when)
 
         fields = dict(
             queue_name=queue_name,
             job_model_repr=job.get_model_repr(),
             job_pk=job.pk.get(),
             identifier=getattr(job, '_cached_identifier', job.identifier.hget()),
-            date=str(when.date()),
-            time=str(when.time()),
+            date_time=when,
+            date=when[:10],
+            time=when[11:],
             message=str(error),
         )
 
@@ -544,5 +548,4 @@ class Error(BaseJobsModel):
         Property which return a real datetime object based on the date and time
         fields
         """
-        date, time = self.hmget('date', 'time')
-        return parse('%s %s' % (date, time))
+        return parse(self.date_time.hget())

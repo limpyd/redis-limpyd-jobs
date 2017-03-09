@@ -810,8 +810,20 @@ job that failed.
 A string (``InstanceHashField``, indexed) to store the name of the queue
 the job was in when it failed.
 
+``date_time``
+'''''''''''''
+
+A string (``InstanceHashField``, indexed with ``SimpleDateTimeIndex``) to
+store the date and time (to the second) of the error (a string representation of
+``datetime.utcnow()``). This field is indexed so you can filter
+errors by date and time (string mode, not by parts of date and time, ie
+``date_time__gt='2017-01-01'``), useful to graph errors.
+
+
 ``date``
 ''''''''
+
+DEPRECATED: this is replaced by ``date_time`` but kept for now for compatibility
 
 A string (``InstanceHashField``, indexed) to store the date (only the
 date, not the time) of the error (a string representation of
@@ -820,6 +832,8 @@ errors by date, useful to graph errors.
 
 ``time``
 ''''''''
+
+DEPRECATED: this is replaced by ``date_time`` but kept for now for compatibility
 
 A string (``InstanceHashField``) to store the time (only the time, not
 the date) of the error (a string representation of
@@ -858,7 +872,7 @@ Error properties and methods
 ''''''''''''
 
 This property returns a ``datetime`` object based on the content of the
-``date`` and ``time`` fields of an ``Error`` object.
+``date_time`` field of an ``Error`` object.
 
 Error class methods
 ^^^^^^^^^^^^^^^^^^^
