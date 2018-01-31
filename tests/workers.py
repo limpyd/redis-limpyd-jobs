@@ -28,7 +28,7 @@ from limpyd.exceptions import DoesNotExist
 from limpyd_jobs.models import Queue, Job, Error
 from limpyd_jobs.workers import Worker, WorkerConfig
 from limpyd_jobs import STATUSES, LimpydJobsException, ConfigurationException
-from limpyd_jobs.version import __version__ as limpyd_jobs_version
+from limpyd_jobs.version import EXACT_VERSION as limpyd_jobs_version
 
 from .base import LimpydBaseTest
 

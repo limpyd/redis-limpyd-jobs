@@ -1,5 +1,1 @@
-redis>=2.10
-redis-limpyd>=1.2
-redis-limpyd-extensions>=1.0
-setproctitle
-python-dateutil
+-e .

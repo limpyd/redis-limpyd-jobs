@@ -21,7 +21,7 @@ from setproctitle import setproctitle
 from limpyd import EXACT_VERSION as limpyd_version
 from limpyd.exceptions import DoesNotExist
 
-from limpyd_jobs.version import __version__ as limpyd_jobs_version
+from limpyd_jobs.version import EXACT_VERSION as limpyd_jobs_version
 from limpyd_jobs import STATUSES, LimpydJobsException, ConfigurationException
 from limpyd_jobs.models import Queue, Job, Error
 from limpyd_jobs.utils import import_class, compute_delayed_until
