@@ -4,12 +4,7 @@ from future import standard_library
 standard_library.install_hooks()
 
 import sys
-if sys.version_info >= (2, 7):
-    from unittest.case import _AssertRaisesContext
-    import unittest
-else:
-    from unittest2.case import _AssertRaisesContext
-    import unittest2 as unittest
+import unittest
 
 from datetime import timedelta
 
@@ -23,7 +18,6 @@ from limpyd.contrib.database import PipelineDatabase
 
 from limpyd_jobs import STATUSES
 from limpyd_jobs.models import BaseJobsModel
-from limpyd_jobs.utils import total_seconds
 
 TEST_CONNECTION_SETTINGS = DEFAULT_CONNECTION_SETTINGS.copy()
 TEST_CONNECTION_SETTINGS['db'] = 15
@@ -117,7 +111,7 @@ class _AssertNumCommandsContext(object):
         )
 
 
-class _AssertSystemExit(_AssertRaisesContext):
+class _AssertSystemExit(unittest.case._AssertRaisesContext):
     """
     A context to wrap to assertRaises(SystemExit) which can also test (via
     assertIn) the content of stderr and stdout
@@ -190,8 +184,3 @@ class LimpydBaseTestTest(LimpydBaseTest):
         with self.assertRaises(KeyError):
             STATUSES['UNKNOWN']
 
-
-class UtilsTest(LimpydBaseTest):
-    def test_assert_total_seconds_works(self):
-        td = timedelta(days=2, seconds=2)
-        self.assertEqual(total_seconds(td), 3600*48+2)
