@@ -1,6 +1,15 @@
 Changelog
 =========
 
+Release *v1.0*  ``2018-01-31``
+------------------------------
+* First stable version
+* Support python versions 2.7 and 3.4 to 3.6
+* Support redis-py versions >= 2.10
+* Support redis-limpyd versions >= 1.2
+* Support redis-limpyd-extensions >= 1.0
+* Add indexed date_time field on Error model
+
 Release *v0.1.5*  ``2016-12-25``
 --------------------------------
 
