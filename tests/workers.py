@@ -21,7 +21,7 @@ else:
 from dateutil.parser import parse
 from setproctitle import getproctitle
 
-from limpyd import __version__ as limpyd_version, fields
+from limpyd import EXACT_VERSION as limpyd_version, fields
 from limpyd.contrib.database import PipelineDatabase
 from limpyd.exceptions import DoesNotExist
 

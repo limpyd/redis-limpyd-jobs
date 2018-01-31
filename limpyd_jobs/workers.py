@@ -18,7 +18,7 @@ from time import sleep
 from dateutil.parser import parse
 from setproctitle import setproctitle
 
-from limpyd import __version__ as limpyd_version
+from limpyd import EXACT_VERSION as limpyd_version
 from limpyd.exceptions import DoesNotExist
 
 from limpyd_jobs.version import __version__ as limpyd_jobs_version
