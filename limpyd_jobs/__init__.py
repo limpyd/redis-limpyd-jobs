@@ -1,3 +1,5 @@
+"""A queue/jobs system based on redis-limpyd, a redis orm (sort of) in python"""
+
 from __future__ import unicode_literals
 
 from .version import *

@@ -2,6 +2,7 @@ from __future__ import unicode_literals
 from __future__ import division
 from future.builtins import int
 
+from importlib import import_module
 from datetime import datetime, timedelta
 import time
 
@@ -51,16 +52,6 @@ def compute_delayed_until(delayed_for=None, delayed_until=None):
     return delayed_until
 
 
-try:
-    from importlib import import_module  # pragma: no cover
-except ImportError:  # pragma: no cover
-    def import_module(module_uri):
-        """
-        Replacement to import_module from importlib for python 2.6
-        """
-        return __import__(module_uri, {}, {}, [''])  # pragma: no cover
-
-
 def import_class(class_uri):
     """
     Import a class by string 'from.path.module.class'
@@ -81,12 +72,3 @@ def import_class(class_uri):
             raise e
 
     return getattr(module, class_name)
-
-
-def total_seconds(td):
-    # Keep backward compatibility with Python 2.6 which doesn't have
-    # this method
-    if hasattr(td, 'total_seconds'):  # pragma: no cover
-        return td.total_seconds()  # pragma: no cover
-    else:
-        return (td.microseconds + (td.seconds + td.days * 24 * 3600) * 10**6) / 10**6  # pragma: no cover

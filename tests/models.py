@@ -679,8 +679,10 @@ class ErrorTests(LimpydBaseTest):
         error = Error.add_error(queue_name='test', job=job, error=e, when=when)
         self.assertEqual(error.date.hget(), '2012-09-29')
         self.assertEqual(error.time.hget(), '22:58:56')
+        self.assertEqual(error.date_time.hget(), '2012-09-29 22:58:56')
         self.assertEqual(error.datetime, when)
         self.assertEqual(list(Error.collection(date='2012-09-29')), [error.pk.get()])
+        self.assertEqual(list(Error.collection(date_time__date__gt='2012-09-01')), [error.pk.get()])
 
     def test_add_error_should_store_the_traceback(self):
         job = Job.add_job(identifier='job:1', queue_name='test')
