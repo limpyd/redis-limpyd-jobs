@@ -15,15 +15,21 @@ Where to find it:
 
 Install:
 
-Python 2.6, 2.7, 3.3 and 3.4 are supported.
+Python versions 2.7, and 3.4 to 3.6 are supported (CPython and PyPy).
+
+Redis-py versions >= 2.10.0, < 2.11 are supported.
+
+Redis-limpyd versions >= 1.2 are supported.
+
+Redis-limpyd-extensions versions >= 1.0 are supported.
 
 .. code:: bash
 
     pip install redis-limpyd-jobs
 
 Note that you actually need the
-`redis-limpyd-extensions <https://github.com/limpyd/redis-limpyd-extensions>`__
-in addition to `redis-limpyd <https://github.com/limpyd/redis-limpyd>`__
+`redis-limpyd-extensions <https://github.com/limpyd/redis-limpyd-extensions>`__ (min v1.0)
+in addition to `redis-limpyd <https://github.com/limpyd/redis-limpyd>`__ (min v1.2)
 (both are automatically installed via pypi)
 
 How it works

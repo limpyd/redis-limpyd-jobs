@@ -28,20 +28,13 @@ from limpyd.exceptions import DoesNotExist
 from limpyd_jobs.models import Queue, Job, Error
 from limpyd_jobs.workers import Worker, WorkerConfig
 from limpyd_jobs import STATUSES, LimpydJobsException, ConfigurationException
-from limpyd_jobs.utils import total_seconds
 from limpyd_jobs.version import __version__ as limpyd_jobs_version
 
 from .base import LimpydBaseTest
 
-try:
-    from logging import NullHandler
-except ImportError:  # python 2.6
-    class NullHandler(logging.Handler):
-        def emit(self, record):
-            pass
 
 # no logger for the tests
-null_handler = NullHandler()
+null_handler = logging.NullHandler()
 logger = logging.getLogger('limpyd-jobs')
 logger.addHandler(null_handler)
 
@@ -1053,7 +1046,7 @@ class WorkerRunTests(LimpydBaseTest):
 
         delayed_until = parse(job.delayed_until.hget())
         delayed_until_expected = datetime.utcnow() + timedelta(seconds=60)
-        self.assertTrue(total_seconds(delayed_until_expected - delayed_until) < 0.5)
+        self.assertTrue((delayed_until_expected - delayed_until).total_seconds() < 0.5)
 
         # job_delayed must have been called
         self.assertEqual(job.foo.hget(), 'bar')
@@ -1078,7 +1071,7 @@ class WorkerRunTests(LimpydBaseTest):
 
         delayed_until = parse(job.delayed_until.hget())
         delayed_until_expected = datetime.utcnow() + timedelta(seconds=60)
-        self.assertTrue(total_seconds(delayed_until_expected - delayed_until) < 0.5)
+        self.assertTrue((delayed_until_expected - delayed_until).total_seconds() < 0.5)
 
         # job_delayed must have been called
         self.assertEqual(job.foo.hget(), 'bar')
@@ -1484,13 +1477,13 @@ class WorkerConfigRunTests(WorkerConfigBaseTests):
         self.assertEqual('test-script [waiting] queues=foo loop=0/1000 waiting=0 delayed=0', getproctitle())
 
         conf.worker.start_date = datetime.utcnow() - timedelta(seconds=10)
-        duration = timedelta(seconds=int(total_seconds(conf.worker.elapsed)))
+        duration = timedelta(seconds=int(conf.worker.elapsed.total_seconds()))
         self.assertEqual('test-script [waiting] queues=foo loop=0/1000 '
                          'waiting=0 delayed=0 duration=%s' % duration,
                          conf.get_proc_title())
 
         conf.worker.max_duration = timedelta(seconds=15)
-        duration = timedelta(seconds=int(total_seconds(conf.worker.elapsed)))
+        duration = timedelta(seconds=int(conf.worker.elapsed.total_seconds()))
         self.assertEqual('test-script [waiting] queues=foo loop=0/1000 '
                          'waiting=0 delayed=0 duration=%s/0:00:15' % duration,
                          conf.get_proc_title())
