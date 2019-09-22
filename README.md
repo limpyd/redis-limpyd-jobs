@@ -18,13 +18,13 @@ Where to find it:
 
 Install:
 
-Python versions 2.7, and 3.4 to 3.6 are supported (CPython and PyPy).
+Python versions 2.7, and 3.5 to 3.8 are supported (CPython and PyPy).
 
 Redis-py versions &gt;= 2.10.0, &lt; 2.11 are supported.
 
-Redis-limpyd versions &gt;= 1.2 are supported.
+Redis-limpyd versions &gt;= 1.3.1 &l; 2 tare supported.
 
-Redis-limpyd-extensions versions &gt;= 1.0 are supported.
+Redis-limpyd-extensions versions &gt;= 1.1.1, &l; 2 are supported.
 
 ```bash
 pip install redis-limpyd-jobs
