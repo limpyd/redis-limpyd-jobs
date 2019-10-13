@@ -432,7 +432,7 @@ class JobTests(LimpydBaseTest):
     def test_duration_should_compute_end_start_difference(self):
         start = datetime.utcnow()
         job = Job.add_job(identifier='job:1', queue_name='test', priority=1)
-        job.hmset(start=start, end=start + timedelta(seconds=2))
+        job.hmset(start=str(start), end=str(start + timedelta(seconds=2)))
         duration = job.duration
         self.assertEqual(duration, timedelta(seconds=2))
 
@@ -641,7 +641,7 @@ class ErrorTests(LimpydBaseTest):
         e = ErrorTests.ExceptionWithCode('the answer', 42)
         job = Job.add_job(identifier='job:1', queue_name='test')
         error1 = Error.add_error(queue_name='test', job=job, error=e)
-        self.assertEqual(list(Error.collection()), [error1.pk.get()])
+        self.assertListEqual(list(Error.collection()), [error1.pk.get()])
         Error.add_error(queue_name='test', job=job, error=e)
         self.assertEqual(len(Error.collection()), 2)
 
@@ -669,8 +669,8 @@ class ErrorTests(LimpydBaseTest):
         self.assertEqual(error.job_model_repr.hget(), job.get_model_repr())
         self.assertEqual(error.job_pk.hget(), job.pk.get())
         self.assertEqual(error.identifier.hget(), 'job:1')
-        self.assertEqual(list(Error.collection(job_pk=job.pk.get())), [error.pk.get()])
-        self.assertEqual(list(Error.collection(identifier=job.identifier.hget())), [error.pk.get()])
+        self.assertListEqual(list(Error.collection(job_pk=job.pk.get())), [error.pk.get()])
+        self.assertListEqual(list(Error.collection(identifier=job.identifier.hget())), [error.pk.get()])
 
     def test_new_error_save_date_and_time_appart(self):
         e = ErrorTests.ExceptionWithCode('the answer', 42)
@@ -681,8 +681,8 @@ class ErrorTests(LimpydBaseTest):
         self.assertEqual(error.time.hget(), '22:58:56')
         self.assertEqual(error.date_time.hget(), '2012-09-29 22:58:56')
         self.assertEqual(error.datetime, when)
-        self.assertEqual(list(Error.collection(date='2012-09-29')), [error.pk.get()])
-        self.assertEqual(list(Error.collection(date_time__date__gt='2012-09-01')), [error.pk.get()])
+        self.assertListEqual(list(Error.collection(date='2012-09-29')), [error.pk.get()])
+        self.assertListEqual(list(Error.collection(date_time__date__gt='2012-09-01')), [error.pk.get()])
 
     def test_add_error_should_store_the_traceback(self):
         job = Job.add_job(identifier='job:1', queue_name='test')

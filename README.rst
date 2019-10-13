@@ -17,11 +17,13 @@ Install:
 
 Python versions 2.7, and 3.5 to 3.8 are supported (CPython and PyPy).
 
-Redis-py versions >= 2.10.0, < 2.11 are supported.
+Redis-server versions >= 3 are supported.
 
-Redis-limpyd versions >= 1.3,.1 < 2 are supported.
+Redis-py versions >= 3 are supported.
 
-Redis-limpyd-extensions versions >= 1.1.1, < 2 are supported.
+Redis-limpyd versions >= 2 are supported.
+
+You can still use limpyd-extensions versions < 2 if you need something older than the above requirements.
 
 .. code:: bash
 

@@ -1,6 +1,10 @@
 Changelog
 =========
 
+Release *v2* - ``2019-10-13``
+-----------------------------
+* Support for limpyd >= 2 only (redis-py >= 3, redis-server >= 3)
+
 Release *v1.1* - ``2019-10-12``
 -------------------------------
 * Official support for Python 3.7 and 3.8
