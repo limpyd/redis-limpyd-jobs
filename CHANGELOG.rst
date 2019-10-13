@@ -1,8 +1,8 @@
 Changelog
 =========
 
-Release *v2.0.dev0* - ``2019-10-13``
-------------------------------------
+Release *v2* - ``2019-10-13``
+-----------------------------
 * Support for limpyd >= 2 only (redis-py >= 3, redis-server >= 3)
 
 Release *v1.1* - ``2019-10-12``
