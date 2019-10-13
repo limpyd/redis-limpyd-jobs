@@ -15,13 +15,13 @@ Where to find it:
 
 Install:
 
-Python versions 2.7, and 3.4 to 3.6 are supported (CPython and PyPy).
+Python versions 2.7, and 3.5 to 3.8 are supported (CPython and PyPy).
 
 Redis-py versions >= 2.10.0, < 2.11 are supported.
 
-Redis-limpyd versions >= 1.2 are supported.
+Redis-limpyd versions >= 1.3,.1 < 2 are supported.
 
-Redis-limpyd-extensions versions >= 1.0 are supported.
+Redis-limpyd-extensions versions >= 1.1.1, < 2 are supported.
 
 .. code:: bash
 

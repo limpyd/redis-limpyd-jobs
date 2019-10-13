@@ -1,6 +1,13 @@
 Changelog
 =========
 
+Release *v1.1* - ``2019-10-12``
+-------------------------------
+* Official support for Python 3.7 and 3.8
+* Remove support for Python 3.4
+* Support redis-limpyd versions >= 1.3.1, < 2
+* Support redis-limpyd-extensions >= 1.1.1, < 2
+
 Release *v1.0*  ``2018-01-31``
 ------------------------------
 * First stable version
