@@ -13,12 +13,8 @@ python:
   - "pypy"
   - "pypy3"
 
-env:
- - REDIS="redis==2.10.6"
-
 install:
-- "pip install $REDIS"
-- "pip install ."
+- pip install .
 
 script: "python run_tests.py"
 

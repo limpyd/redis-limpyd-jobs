@@ -88,7 +88,7 @@ class Queue(BaseJobsModel):
         Add the job to the delayed list (zset) of the queue.
         """
         timestamp = datetime_to_score(delayed_until)
-        self.delayed.zadd(timestamp, job.ident)
+        self.delayed.zadd({job.ident: timestamp})
 
     def enqueue_job(self, job, prepend=False):
         """
@@ -117,7 +117,7 @@ class Queue(BaseJobsModel):
 
         queues = []
         for queue_name in names:
-            queues.extend(cls.collection(name=queue_name).instances())
+            queues.extend(list(cls.collection(name=queue_name).instances()))
 
         return queues
 
